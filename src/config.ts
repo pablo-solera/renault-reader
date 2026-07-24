@@ -7,6 +7,7 @@ export type Config = {
   s3AccessKey: string;
   s3SecretKey: string;
   s3ForcePathStyle: boolean;
+  s3AutoCreateBucket: boolean;
   stateTtlSeconds: number;
   renaultApiBase: string;
   gigyaApiBase: string;
@@ -27,12 +28,13 @@ const numberEnv = (name: string, fallback: number) => {
 export const config: Config = {
   port: numberEnv("PORT", 3000),
   redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
-  s3Endpoint: process.env.S3_ENDPOINT ?? "http://127.0.0.1:9000",
+  s3Endpoint: process.env.S3_ENDPOINT,
   s3Region: process.env.S3_REGION ?? "us-east-1",
   s3Bucket: process.env.S3_BUCKET ?? "renault-reader",
-  s3AccessKey: process.env.S3_ACCESS_KEY ?? "minioadmin",
-  s3SecretKey: process.env.S3_SECRET_KEY ?? "minioadmin",
+  s3AccessKey: process.env.S3_ACCESS_KEY ?? "",
+  s3SecretKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
   s3ForcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
+  s3AutoCreateBucket: process.env.S3_AUTO_CREATE_BUCKET === "true",
   stateTtlSeconds: numberEnv("STATE_TTL_SECONDS", 604800),
   renaultApiBase: (process.env.RENAULT_API_BASE ?? "https://opeeu.a5m.opeeu.asdh.aws.renault.com/api/").replace(/\/$/, "") + "/",
   gigyaApiBase: (process.env.GIGYA_API_BASE ?? "https://accounts.eu1.gigya.com").replace(/\/$/, ""),

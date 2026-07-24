@@ -1,19 +1,28 @@
 # Renault Reader
 
-API Bun + Express para generar exportaciones Labour Times (`TM01`) de ASMDOR y almacenar el ZIP en S3/MinIO.
+API Bun + Express para generar exportaciones Labour Times (`TM01`) de ASMDOR y almacenar el ZIP en S3 compatible.
 
 ## Requisitos
 
 - Bun 1.3+
 - Redis 7+
-- S3 compatible, o MinIO local
+- Un bucket S3 compatible ya creado
 
 ## Arranque local
 
 ```powershell
 Copy-Item .env.example .env
-docker compose up -d redis minio
+docker compose up -d redis
 ```
+
+Configura en `.env` el endpoint, bucket, región y credenciales de S3. El bucket debe
+existir previamente y `S3_AUTO_CREATE_BUCKET=false` evita que un error de permisos se
+interprete como permiso para crearlo.
+
+La variable del secreto se llama `S3_SECRET_ACCESS_KEY`. Si aparece `SignatureDoesNotMatch`,
+comprueba que la access key y el secreto pertenecen al mismo par, que no incluyen comillas
+ni espacios, y que la política permite acceder a `S3_BUCKET`. Rota cualquier secreto que
+haya sido compartido por chat o capturas.
 
 `CREDENTIAL_ENCRYPTION_KEY` es una clave local AES-256 usada para cifrar temporalmente
 las contraseñas antes de guardarlas en Redis. Debe ser Base64 de exactamente 32 bytes.

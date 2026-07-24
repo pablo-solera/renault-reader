@@ -1,4 +1,4 @@
-import { GetObjectCommand, PutObjectCommand, S3Client, HeadBucketCommand, CreateBucketCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand, S3Client, HeadBucketCommand, CreateBucketCommand, S3ServiceException } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Upload } from "@aws-sdk/lib-storage";
 import { Readable } from "node:stream";
@@ -12,8 +12,19 @@ const client = new S3Client({
 });
 
 export async function ensureBucket() {
-  try { await client.send(new HeadBucketCommand({ Bucket: config.s3Bucket })); }
-  catch { await client.send(new CreateBucketCommand({ Bucket: config.s3Bucket })); }
+  if (!config.s3Endpoint || !config.s3AccessKey || !config.s3SecretKey || !config.s3Bucket) {
+    throw new Error("S3_ENDPOINT, S3_ACCESS_KEY, S3_SECRET_ACCESS_KEY and S3_BUCKET are required");
+  }
+  try {
+    await client.send(new HeadBucketCommand({ Bucket: config.s3Bucket }));
+  } catch (error) {
+    const status = error instanceof S3ServiceException ? error.$metadata.httpStatusCode : undefined;
+    if (config.s3AutoCreateBucket && status === 404) {
+      await client.send(new CreateBucketCommand({ Bucket: config.s3Bucket }));
+      return;
+    }
+    throw new Error(status === 403 ? "S3 credentials cannot access the configured bucket" : `Cannot access S3 bucket (HTTP ${status ?? "unknown"})`);
+  }
 }
 
 export async function uploadObject(key: string, body: ReadableStream<Uint8Array>, contentType = "application/zip") {
