@@ -196,8 +196,9 @@ The ZIP is downloaded with a direct `GET` to `downloadUrl` and must not receive 
 ## Local implementation decisions
 
 - Redis stores job state with a TTL and BullMQ queue data.
-- Passwords are encrypted with AES-256-GCM before temporary Redis storage and deleted after login.
-- ZIPs are streamed to S3/MinIO under `labours/{requestId}/{fileName}`.
+- Renault credentials are loaded only from the worker/API environment (`RENAULT_EMAIL` and `RENAULT_PASSWORD`); they are never accepted over HTTP or stored in Redis.
+- ZIPs are streamed to S3 under `S3_LABOURS_PREFIX/renault_{requestId}_{fileName}`.
+- The Renault default prefix is `RENAULT_GROUP/files_datasource/RENAULT/Labour_Time`.
 - There is no API authentication in the MVP; the server binds to loopback by default.
 - `POST /parts` is intentionally a `501` placeholder.
 

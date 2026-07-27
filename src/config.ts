@@ -4,6 +4,7 @@ export type Config = {
   s3Endpoint?: string;
   s3Region: string;
   s3Bucket: string;
+  s3LaboursPrefix: string;
   s3AccessKey: string;
   s3SecretKey: string;
   s3ForcePathStyle: boolean;
@@ -12,12 +13,17 @@ export type Config = {
   renaultApiBase: string;
   gigyaApiBase: string;
   gigyaApiKey: string;
-  defaultRenaultEmail?: string;
-  defaultRenaultPassword?: string;
   jobConcurrency: number;
   pollIntervalMs: number;
   jobTimeoutMs: number;
 };
+
+export function getRenaultCredentials() {
+  const email = process.env.RENAULT_EMAIL?.trim();
+  const password = process.env.RENAULT_PASSWORD;
+  if (!email || !password) throw new Error("RENAULT_EMAIL and RENAULT_PASSWORD are required");
+  return { email, password };
+}
 
 const numberEnv = (name: string, fallback: number) => {
   const value = Number(process.env[name] ?? fallback);
@@ -30,7 +36,8 @@ export const config: Config = {
   redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
   s3Endpoint: process.env.S3_ENDPOINT,
   s3Region: process.env.S3_REGION ?? "us-east-1",
-  s3Bucket: process.env.S3_BUCKET ?? "renault-reader",
+  s3Bucket: process.env.S3_BUCKET ?? "magnets-reader-dev",
+  s3LaboursPrefix: process.env.S3_LABOURS_PREFIX ?? "RENAULT_GROUP/files_datasource/RENAULT/Labour_Time",
   s3AccessKey: process.env.S3_ACCESS_KEY ?? "",
   s3SecretKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
   s3ForcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
@@ -39,8 +46,6 @@ export const config: Config = {
   renaultApiBase: (process.env.RENAULT_API_BASE ?? "https://opeeu.a5m.opeeu.asdh.aws.renault.com/api/").replace(/\/$/, "") + "/",
   gigyaApiBase: (process.env.GIGYA_API_BASE ?? "https://accounts.eu1.gigya.com").replace(/\/$/, ""),
   gigyaApiKey: process.env.GIGYA_API_KEY ?? "",
-  defaultRenaultEmail: process.env.RENAULT_EMAIL,
-  defaultRenaultPassword: process.env.RENAULT_PASSWORD,
   jobConcurrency: numberEnv("JOB_CONCURRENCY", 2),
   pollIntervalMs: numberEnv("POLL_INTERVAL_MS", 30000),
   jobTimeoutMs: numberEnv("JOB_TIMEOUT_MS", 86400000),

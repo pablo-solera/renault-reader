@@ -2,7 +2,7 @@ export const openapi = {
   openapi: "3.0.3",
   info: {
     title: "Renault Reader API",
-    version: "0.1.0",
+    version: "1.0.0",
     description: "API para generar y descargar exportaciones Labour Times de ASMDOR.",
   },
   servers: [{ url: "http://localhost:3000", description: "Local" }],
@@ -23,7 +23,7 @@ export const openapi = {
       post: {
         tags: ["Labours"],
         summary: "Obtiene las opciones autorizadas para TM01",
-        description: "Autentica contra Gigya y consulta las familias, formatos e idiomas permitidos por Renault.",
+        description: "Usa las credenciales RENAULT_EMAIL/RENAULT_PASSWORD del entorno, autentica contra Gigya y consulta las familias, formatos e idiomas permitidos por Renault.",
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LabourOptionsRequest" } } } },
         responses: {
           "200": { description: "Opciones autorizadas", content: { "application/json": { schema: { $ref: "#/components/schemas/LabourOptionsResponse" } } } },
@@ -35,7 +35,7 @@ export const openapi = {
       post: {
         tags: ["Labours"],
         summary: "Encola una exportación Labour Times",
-        description: "Crea un job asíncrono. La contraseña solo se conserva cifrada temporalmente en Redis.",
+        description: "Crea un job asíncrono usando exclusivamente las credenciales configuradas en el entorno.",
         requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/LabourRequest" } } } },
         responses: {
           "202": { description: "Exportación encolada", content: { "application/json": { schema: { $ref: "#/components/schemas/QueuedResponse" } } } },
@@ -89,8 +89,6 @@ export const openapi = {
         type: "object",
         required: ["range"],
         properties: {
-          email: { type: "string", format: "email", description: "Opcional si RENAULT_EMAIL está configurado" },
-          password: { type: "string", format: "password", writeOnly: true, description: "Opcional si RENAULT_PASSWORD está configurado" },
           range: { type: "string", example: "active" },
         },
       },
@@ -98,8 +96,6 @@ export const openapi = {
         type: "object",
         required: ["family", "format", "language", "range"],
         properties: {
-          email: { type: "string", format: "email", description: "Opcional si RENAULT_EMAIL está configurado" },
-          password: { type: "string", format: "password", writeOnly: true, description: "Opcional si RENAULT_PASSWORD está configurado" },
           family: { type: "string", example: "All", description: "Debe ser un value autorizado por /labours/options" },
           format: { type: "string", example: "_json.zip", description: "Usa exactamente un valor devuelto por /labours/options, por ejemplo _json.zip o _csv.zip; no confundir con contentFormat" },
           language: { type: "string", example: "en" },
@@ -149,7 +145,7 @@ export const openapi = {
           progress: { type: "integer", nullable: true, minimum: 0, maximum: 100 },
           remoteRequestId: { type: "string", nullable: true },
           fileName: { type: "string", nullable: true },
-          objectKey: { type: "string", nullable: true },
+          objectKey: { type: "string", nullable: true, example: "RENAULT_GROUP/files_datasource/RENAULT/Labour_Time/renault_<requestId>_<fileName>" },
           downloadUrl: { type: "string", nullable: true, example: "/labours/550e8400-e29b-41d4-a716-446655440000/download" },
           error: { type: "string", nullable: true },
           createdAt: { type: "string", format: "date-time" },

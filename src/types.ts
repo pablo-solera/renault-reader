@@ -1,6 +1,4 @@
 export type LabourRequest = {
-  email: string;
-  password: string;
   family: string;
   format: string;
   language: string;
@@ -19,6 +17,10 @@ export type JobState = {
   fileName?: string;
   objectKey?: string;
   error?: string;
+  failureOperation?: string;
+  failureCode?: string;
+  failureStatus?: number;
+  failureRequestId?: string;
   createdAt: string;
   updatedAt: string;
 };

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { buildLabourObjectKey } from "../src/jobs.js";
 import { buildFileName, getEditorFamilies, getPartnerFamilies } from "../src/renault.js";
+import { normalizeUploadContentType } from "../src/storage.js";
 
 describe("Renault Labour helpers", () => {
   test("filters and sorts authorized partner families", () => {
@@ -24,11 +26,21 @@ describe("Renault Labour helpers", () => {
       .toThrow("allfamilyList has no active range");
   });
 
+  test("stores Labour files under the Renault datasource prefix", () => {
+    const key = buildLabourObjectKey("request-1", "tm_data_X06/editor.zip");
+    expect(key).toBe("RENAULT_GROUP/files_datasource/RENAULT/Labour_Time/renault_request-1_tm_data_X06_editor.zip");
+    expect(key).not.toContain("/request-1/");
+  });
+
+  test("normalizes Renault's non-MIME ZIP content type", () => {
+    expect(normalizeUploadContentType("zip")).toBe("application/zip");
+    expect(normalizeUploadContentType("application/zip")).toBe("application/zip");
+  });
+
   test("frames a Labour filename without exposing credentials", () => {
     const file = buildFileName({ queryDownloadPath: "TM01/labours.zip", familyFilter: true, language: ["en"] } as any, {
-      email: "user@example.com", password: "secret", family: "All", format: "_json.zip", language: "en", range: "active", publishedAfter: "2026-05-01",
+      family: "All", format: "_json.zip", language: "en", range: "active", publishedAfter: "2026-05-01",
     }, "AUDATEX");
     expect(file).toBe("labours_All_audatex_en_after20260501_json.zip");
-    expect(file).not.toContain("secret");
   });
 });

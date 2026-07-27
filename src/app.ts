@@ -1,7 +1,7 @@
 import express, { type Request, type Response } from "express";
 import { signedDownload } from "./storage.js";
 import { discoverLabourOptions, gigyaLogin, RenaultClient } from "./renault.js";
-import { config } from "./config.js";
+import { config, getRenaultCredentials } from "./config.js";
 import { enqueueLabour, getState } from "./jobs.js";
 import type { LabourRequest } from "./types.js";
 import { openapi } from "./openapi.js";
@@ -15,20 +15,21 @@ const required = (value: unknown, name: string): string => {
   return value.trim();
 };
 
-const configuredCredential = (value: unknown, fallback: string | undefined, name: string) =>
-  required(value ?? fallback, name);
+const rejectCredentials = (body: any) => {
+  if (body && (Object.hasOwn(body, "email") || Object.hasOwn(body, "password"))) {
+    throw new Error("Credentials must be configured through environment variables");
+  }
+};
 
 function parseInput(body: any): LabourRequest {
+  rejectCredentials(body);
   const input: LabourRequest = {
-    email: configuredCredential(body?.email, config.defaultRenaultEmail, "email"),
-    password: configuredCredential(body?.password, config.defaultRenaultPassword, "password"),
     family: required(body?.family, "family"),
     format: required(body?.format, "format"),
     language: required(body?.language, "language").toLowerCase(),
     range: required(body?.range, "range"),
     publishedAfter: body?.publishedAfter ? required(body.publishedAfter, "publishedAfter") : undefined,
   };
-  if (!/^\S+@\S+\.\S+$/.test(input.email)) throw new Error("email is invalid");
   if (input.publishedAfter && !/^\d{4}-\d{2}-\d{2}$/.test(input.publishedAfter)) throw new Error("publishedAfter must use YYYY-MM-DD");
   return input;
 }
@@ -46,9 +47,9 @@ app.get("/docs", (_request, response) => response.type("html").send(`<!doctype h
 app.post("/labours/options", async (request: Request, response: Response) => {
   try {
     const body = request.body ?? {};
-    const email = configuredCredential(body.email, config.defaultRenaultEmail, "email");
-    const password = configuredCredential(body.password, config.defaultRenaultPassword, "password");
+    rejectCredentials(body);
     const range = required(body.range, "range");
+    const { email, password } = getRenaultCredentials();
     const auth = await gigyaLogin(email, password);
     const discovered = await discoverLabourOptions(new RenaultClient(auth.token), email, range);
     response.json({ queryCode: discovered.query.queryCode, profile: discovered.profile.value, range, families: discovered.families, formats: discovered.formats, languages: discovered.languages });

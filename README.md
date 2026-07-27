@@ -19,25 +19,28 @@ Configura en `.env` el endpoint, bucket, región y credenciales de S3. El bucket
 existir previamente y `S3_AUTO_CREATE_BUCKET=false` evita que un error de permisos se
 interprete como permiso para crearlo.
 
+Las exportaciones Renault se almacenan en:
+
+```text
+s3://<S3_BUCKET>/<S3_LABOURS_PREFIX>/renault_<requestId>_<fileName>
+```
+
+El prefijo por defecto es `RENAULT_GROUP/files_datasource/RENAULT/Labour_Time`.
+
 La variable del secreto se llama `S3_SECRET_ACCESS_KEY`. Si aparece `SignatureDoesNotMatch`,
 comprueba que la access key y el secreto pertenecen al mismo par, que no incluyen comillas
 ni espacios, y que la política permite acceder a `S3_BUCKET`. Rota cualquier secreto que
 haya sido compartido por chat o capturas.
 
-`CREDENTIAL_ENCRYPTION_KEY` es una clave local AES-256 usada para cifrar temporalmente
-las contraseñas antes de guardarlas en Redis. Debe ser Base64 de exactamente 32 bytes.
-Genérala así y añádela al `.env`:
+Las credenciales Renault se configuran exclusivamente en `.env` mediante
+`RENAULT_EMAIL` y `RENAULT_PASSWORD`. No se aceptan en las peticiones HTTP ni se
+guardan en Redis. La API y el worker deben usar el mismo entorno.
+Si una petición incluye `email` o `password`, se rechaza con `400`.
 
 ```powershell
-$bytes = New-Object byte[] 32
-[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-$env:CREDENTIAL_ENCRYPTION_KEY = [Convert]::ToBase64String($bytes)
 bun install
 bun run start
 ```
-
-La misma clave debe estar disponible para la API y el worker. No la cambies mientras
-haya jobs pendientes y no la subas al repositorio.
 
 En otra terminal, arranca el worker:
 
@@ -63,8 +66,6 @@ Content-Type: application/json
 
 ```json
 {
-  "email": "usuario@example.com",
-  "password": "...",
   "range": "active"
 }
 ```
@@ -78,8 +79,6 @@ Content-Type: application/json
 
 ```json
 {
-  "email": "usuario@example.com",
-  "password": "...",
   "family": "<family.value>",
   "format": "_json.zip",
   "language": "en",
