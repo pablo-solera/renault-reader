@@ -138,3 +138,22 @@ export async function uploadObject(key: string, body: ReadableStream<Uint8Array>
 export async function signedDownload(key: string) {
   return getSignedUrl(client, new GetObjectCommand({ Bucket: config.s3Bucket, Key: key }), { expiresIn: 900 });
 }
+
+export function bytesStream(bytes: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(bytes);
+      controller.close();
+    },
+  });
+}
+
+export async function uploadBytes(key: string, bytes: Uint8Array, contentType: string) {
+  return uploadObject(key, bytesStream(bytes), contentType);
+}
+
+export async function downloadBytes(key: string): Promise<Uint8Array> {
+  const response = await client.send(new GetObjectCommand({ Bucket: config.s3Bucket, Key: key }));
+  if (!response.Body) throw new Error(`S3 object ${key} has no body`);
+  return new Uint8Array(await response.Body.transformToByteArray());
+}

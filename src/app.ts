@@ -1,9 +1,10 @@
 import express, { type Request, type Response } from "express";
 import { signedDownload } from "./storage.js";
-import { discoverLabourOptions, gigyaLogin, RenaultClient } from "./renault.js";
+import { discoverExportOptions, discoverLabourOptions, gigyaLogin, RenaultClient } from "./renault.js";
 import { config, getRenaultCredentials } from "./config.js";
-import { enqueueLabour, getState } from "./jobs.js";
-import type { LabourRequest } from "./types.js";
+import { enqueueLabour, enqueueModel, enqueueParts, getState } from "./jobs.js";
+import { PARTS_EXPORT_CODES, type LabourRequest, type ModelExtractionRequest, type PartsRequest } from "./types.js";
+import { normalizeAxCode, normalizeEdition, normalizeManufacturer } from "./parts.js";
 import { openapi } from "./openapi.js";
 
 export const app = express();
@@ -32,6 +33,54 @@ function parseInput(body: any): LabourRequest {
   };
   if (input.publishedAfter && !/^\d{4}-\d{2}-\d{2}$/.test(input.publishedAfter)) throw new Error("publishedAfter must use YYYY-MM-DD");
   return input;
+}
+
+function parsePartsInput(body: any): PartsRequest {
+  rejectCredentials(body);
+  const exportType = required(body?.exportType, "exportType").toUpperCase() as PartsRequest["exportType"];
+  if (!PARTS_EXPORT_CODES.includes(exportType)) throw new Error(`Unsupported Parts exportType; use ${PARTS_EXPORT_CODES.join(", ")}`);
+  const input: PartsRequest = {
+    exportType,
+    axCode: body?.axCode ? normalizeAxCode(required(body.axCode, "axCode")) : undefined,
+    epc: body?.epc ? required(body.epc, "epc") : undefined,
+    manufacturer: body?.manufacturer ? normalizeManufacturer(required(body.manufacturer, "manufacturer")) : undefined,
+    description: body?.description ? required(body.description, "description") : undefined,
+    edition: body?.edition ? normalizeEdition(required(body.edition, "edition")) : undefined,
+    modelIds: body?.modelIds ? (() => {
+      if (!Array.isArray(body.modelIds) || body.modelIds.some((value: unknown) => typeof value !== "string" || !value.trim())) throw new Error("modelIds must be an array of non-empty strings");
+      return body.modelIds.map((value: string) => value.trim());
+    })() : undefined,
+    previousRequestId: body?.previousRequestId ? required(body.previousRequestId, "previousRequestId") : undefined,
+    illustrationsRequestId: body?.illustrationsRequestId ? required(body.illustrationsRequestId, "illustrationsRequestId") : undefined,
+    family: body?.family ? required(body.family, "family") : undefined,
+    format: body?.format ? required(body.format, "format") : undefined,
+    language: body?.language ? required(body.language, "language").toLowerCase() : undefined,
+    range: required(body?.range, "range"),
+    publishedAfter: body?.publishedAfter ? required(body.publishedAfter, "publishedAfter") : undefined,
+  };
+  if (input.publishedAfter && !/^\d{4}-\d{2}-\d{2}$/.test(input.publishedAfter)) throw new Error("publishedAfter must use YYYY-MM-DD");
+  if (input.edition === "01/0" && input.previousRequestId) throw new Error("No se puede comparar la primera edición 01/0");
+  return input;
+}
+
+function parseModelInput(body: any): ModelExtractionRequest {
+  rejectCredentials(body);
+  if (!Array.isArray(body?.modelIds) || body.modelIds.length === 0 || body.modelIds.some((v: unknown) => typeof v !== "string" || !v.trim())) throw new Error("modelIds must be a non-empty array of strings");
+  const exports = body?.exports;
+  if (exports != null && (typeof exports !== "object" || Object.keys(exports).some((key) => !PARTS_EXPORT_CODES.includes(key as any) || typeof exports[key] !== "boolean"))) throw new Error("exports must contain boolean Parts export codes");
+  return {
+    axCode: normalizeAxCode(required(body?.axCode, "axCode")),
+    edition: normalizeEdition(required(body?.edition, "edition")),
+    manufacturer: normalizeManufacturer(required(body?.manufacturer, "manufacturer")),
+    description: required(body?.description, "description"),
+    family: required(body?.family, "family"),
+    modelIds: body.modelIds.map((v: string) => v.trim()),
+    range: required(body?.range, "range"),
+    language: body?.language ? required(body.language, "language").toLowerCase() : undefined,
+    format: body?.format ? required(body.format, "format") : undefined,
+    exports,
+    resumeRequestId: body?.resumeRequestId ? required(body.resumeRequestId, "resumeRequestId") : undefined,
+  };
 }
 
 app.get("/health", (_request, response) => response.json({ status: "ok" }));
@@ -81,7 +130,66 @@ app.get("/labours/:requestId/download", async (request: Request, response: Respo
   return response.redirect(307, await signedDownload(state.objectKey));
 });
 
-app.post("/parts", (_request, response) => response.status(501).json({ error: "Parts is not implemented yet" }));
+app.post("/parts/options", async (request: Request, response: Response) => {
+  try {
+    const body = request.body ?? {};
+    rejectCredentials(body);
+    const exportType = required(body.exportType, "exportType").toUpperCase() as PartsRequest["exportType"];
+    if (!PARTS_EXPORT_CODES.includes(exportType)) throw new Error(`Unsupported Parts exportType; use ${PARTS_EXPORT_CODES.join(", ")}`);
+    const range = required(body.range, "range");
+    const { email, password } = getRenaultCredentials();
+    const auth = await gigyaLogin(email, password);
+    const discovered = await discoverExportOptions(new RenaultClient(auth.token), email, range, exportType);
+    response.json({ queryCode: discovered.query.queryCode, queryDesc: discovered.query.queryDesc, profile: discovered.profile.value, range, families: discovered.families, formats: discovered.formats, languages: discovered.languages });
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : "Invalid Parts options request" });
+  }
+});
+
+app.post("/parts", async (request: Request, response: Response) => {
+  try {
+    const state = await enqueueParts(parsePartsInput(request.body));
+    response.status(202).json({ requestId: state.requestId, status: state.status, statusUrl: `/parts/${state.requestId}` });
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : "Invalid Parts request" });
+  }
+});
+
+app.get("/parts/:requestId", async (request: Request, response: Response) => {
+  const requestId = String(request.params.requestId);
+  const state = await getState(requestId);
+  if (!state) return response.status(404).json({ error: "Parts request not found" });
+  return response.json({ ...state, downloadUrl: state.status === "completed" && state.objectKey ? `/parts/${state.requestId}/download` : undefined });
+});
+
+app.get("/parts/:requestId/download", async (request: Request, response: Response) => {
+  const state = await getState(String(request.params.requestId));
+  if (!state) return response.status(404).json({ error: "Parts request not found" });
+  if (state.status !== "completed" || !state.objectKey) return response.status(409).json({ error: "Parts file is not ready", status: state.status });
+  return response.redirect(307, await signedDownload(state.objectKey));
+});
+
+app.post("/models", async (request: Request, response: Response) => {
+  try {
+    const state = await enqueueModel(parseModelInput(request.body));
+    response.status(202).json({ requestId: state.requestId, status: state.status, statusUrl: `/models/${state.requestId}` });
+  } catch (error) {
+    response.status(400).json({ error: error instanceof Error ? error.message : "Invalid model extraction request" });
+  }
+});
+
+app.get("/models/:requestId", async (request: Request, response: Response) => {
+  const state = await getState(String(request.params.requestId));
+  if (!state) return response.status(404).json({ error: "Model extraction not found" });
+  return response.json({ ...state, downloadUrl: state.status === "completed" && state.objectKey ? `/models/${state.requestId}/download` : undefined });
+});
+
+app.get("/models/:requestId/download", async (request: Request, response: Response) => {
+  const state = await getState(String(request.params.requestId));
+  if (!state) return response.status(404).json({ error: "Model extraction not found" });
+  if (state.status !== "completed" || !state.objectKey) return response.status(409).json({ error: "Model report is not ready", status: state.status });
+  return response.redirect(307, await signedDownload(state.objectKey));
+});
 
 app.use((error: unknown, _request: Request, response: Response, _next: unknown) => response.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" }));
 

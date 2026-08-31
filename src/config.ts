@@ -5,6 +5,9 @@ export type Config = {
   s3Region: string;
   s3Bucket: string;
   s3LaboursPrefix: string;
+  s3PartsPrefix: string;
+  s3SparePartPrefix: string;
+  s3PartsSegment: string;
   s3AccessKey: string;
   s3SecretKey: string;
   s3ForcePathStyle: boolean;
@@ -16,6 +19,7 @@ export type Config = {
   jobConcurrency: number;
   pollIntervalMs: number;
   jobTimeoutMs: number;
+  manufacturerDescriptions: Record<string, string>;
 };
 
 export function getRenaultCredentials() {
@@ -38,6 +42,9 @@ export const config: Config = {
   s3Region: process.env.S3_REGION ?? "us-east-1",
   s3Bucket: process.env.S3_BUCKET ?? "magnets-reader-dev",
   s3LaboursPrefix: process.env.S3_LABOURS_PREFIX ?? "RENAULT_GROUP/files_datasource/RENAULT/Labour_Time",
+  s3PartsPrefix: process.env.S3_PARTS_PREFIX ?? "RENAULT_GROUP/files_datasource/RENAULT/Parts",
+  s3SparePartPrefix: process.env.S3_SPARE_PART_PREFIX ?? "RENAULT_GROUP/files_datasource",
+  s3PartsSegment: process.env.S3_PARTS_SEGMENT ?? "Parts",
   s3AccessKey: process.env.S3_ACCESS_KEY ?? "",
   s3SecretKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
   s3ForcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
@@ -49,4 +56,14 @@ export const config: Config = {
   jobConcurrency: numberEnv("JOB_CONCURRENCY", 2),
   pollIntervalMs: numberEnv("POLL_INTERVAL_MS", 30000),
   jobTimeoutMs: numberEnv("JOB_TIMEOUT_MS", 86400000),
+  manufacturerDescriptions: (() => {
+    const raw = process.env.RENAULT_MANUFACTURER_DESCRIPTIONS;
+    if (!raw) return { RENAULT: "Renault" };
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, string> : {};
+    } catch {
+      throw new Error("RENAULT_MANUFACTURER_DESCRIPTIONS must be valid JSON");
+    }
+  })(),
 };

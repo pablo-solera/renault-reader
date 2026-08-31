@@ -1,4 +1,4 @@
-import type { LabourRequest, RenaultQuery } from "./types.js";
+import type { LabourRequest, PartsRequest, RenaultQuery } from "./types.js";
 import { config } from "./config.js";
 
 type Json = Record<string, any>;
@@ -12,7 +12,10 @@ async function jsonResponse(response: Response, service: string): Promise<Json> 
   const text = await response.text();
   let body: any;
   try { body = text ? JSON.parse(text) : {}; } catch { throw new Error(`${service} returned invalid JSON`); }
-  if (!response.ok) throw new Error(`${service} returned HTTP ${response.status}`);
+  if (!response.ok) {
+    const detail = typeof body?.message === "string" ? `: ${body.message}` : typeof body?.errorMessage === "string" ? `: ${body.errorMessage}` : body && Object.keys(body).length ? `: ${JSON.stringify(body).slice(0, 300)}` : "";
+    throw new Error(`${service} returned HTTP ${response.status}${detail}`);
+  }
   if (!body || typeof body !== "object") throw new Error(`${service} returned an invalid object`);
   return body;
 }
@@ -61,10 +64,15 @@ export class RenaultClient {
   }
 
   async status(query: RenaultQuery, payload: Json, fileName: string): Promise<Json> {
-    return this.request("rest/v1/requestquery/get/status", {
-      method: "POST",
-      body: JSON.stringify({ ...payload, queryLabel: `${query.queryCode} - ${query.queryDesc}`, queryid: query.id, fileName }),
-    });
+    try {
+      return await this.request("rest/v1/requestquery/get/status", {
+        method: "POST",
+        body: JSON.stringify({ ...payload, queryLabel: `${query.queryCode} - ${query.queryDesc}`, queryid: query.id, fileName }),
+      });
+    } catch (error) {
+      if (error instanceof Error && /HTTP 500/.test(error.message)) return { status: "STATUS_ERROR", errorMessage: error.message };
+      throw error;
+    }
   }
 
   async launch(query: RenaultQuery, payload: Json): Promise<void> {
@@ -123,15 +131,25 @@ export async function gigyaLogin(email: string, password: string): Promise<{ tok
 }
 
 export function buildFileName(query: RenaultQuery, input: LabourRequest, profileValue: string): string {
-  const source = query.queryDownloadPath.split("/")[1];
-  if (!source) throw new Error("TM01 queryDownloadPath has no file name");
-  const dot = source.indexOf(".");
-  const base = dot >= 0 ? source.slice(0, dot) : source;
+  const source = query.queryDownloadPath.split("/").pop();
+  if (!source) throw new Error(`${query.queryCode} queryDownloadPath has no file name`);
+  const base = source.replace(/\.(tar\.gz|zip|json)$/i, "");
   const familyPart = query.familyFilter ? (input.family === "All" ? "All" : input.family) : "All";
   let name = `${base}_${familyPart}_${profileValue.toLowerCase()}`;
   if (query.language) name += `_${input.language}`;
   if (input.publishedAfter) name += `_after${input.publishedAfter.replaceAll("-", "")}`;
-  return `${name}${input.format.includes(".") ? input.format : `.${input.format}`}`;
+  const suffix = input.format.startsWith(".") || input.format.startsWith("_") ? input.format : `.${input.format}`;
+  return `${name}${suffix}`;
+}
+
+export function buildPartsFileName(query: RenaultQuery, input: PartsRequest, profileValue: string): string {
+  return buildFileName(query, {
+    family: input.family ?? "All",
+    format: input.format ?? "zip",
+    language: input.language ?? "",
+    range: input.range,
+    publishedAfter: input.publishedAfter,
+  }, profileValue);
 }
 
 export function getPartnerFamilies(applicability: Json, query: RenaultQuery, range: string): Json[] {
@@ -156,6 +174,10 @@ export function getEditorFamilies(response: Json, query: RenaultQuery): Json[] {
 }
 
 export async function discoverLabourOptions(client: RenaultClient, email: string, range: string) {
+  return discoverExportOptions(client, email, range, "TM01");
+}
+
+export async function discoverExportOptions(client: RenaultClient, email: string, range: string, queryCode: string) {
   const applicability = await client.applicability(email);
   const data = applicability.responseData;
   if (applicability.status !== "Success" || !data?.commercialName) throw new Error("Renault returned no valid partner applicability");
@@ -165,8 +187,8 @@ export async function discoverLabourOptions(client: RenaultClient, email: string
   if (!profile?.value) throw new Error("Renault returned no AUDATEX profile");
   const role = data.accountType === "Partner" ? "a5m_partner" : String(profile.role ?? "EDITOR");
   const queryResponse = await client.queries(profile.value, role);
-  const query = queryResponse.responseData?.find((item: RenaultQuery) => item.queryCode === "TM01") as RenaultQuery | undefined;
-  if (!query) throw new Error("TM01 is not available for this profile");
+  const query = queryResponse.responseData?.find((item: RenaultQuery) => item.queryCode === queryCode) as RenaultQuery | undefined;
+  if (!query) throw new Error(`${queryCode} is not available for this profile`);
   let families: Json[] = [];
   if (query.familyFilter) {
     if (data.accountType === "Partner") {
@@ -178,26 +200,36 @@ export async function discoverLabourOptions(client: RenaultClient, email: string
     }
   }
   const languages = query.language == null ? null : [...new Set([...query.language, ...(data.applicabilitiesLanguage ?? []).filter(Boolean).map((item: string) => item.toLowerCase())])].sort();
-  const formats = query.formatList?.map((item) => item.value) ?? ["csv", "json"];
+  const formats = query.formatList?.map((item) => item.value) ?? [query.queryDownloadPath.toLowerCase().endsWith(".tar.gz") ? "tar.gz" : "zip"];
   return { query, profile, applicability, families, languages, formats, range };
 }
 
 export function buildLabourPayload(query: RenaultQuery, profile: Json, input: LabourRequest, selectedFamily?: Json): Json {
-  const family = selectedFamily ?? (input.family === "All" ? { value: "All", criteria: "All" } : { value: input.family, criteria: input.family });
+  return buildExportPayload(query, profile, input, selectedFamily);
+}
+
+export function buildExportPayload(query: RenaultQuery, profile: Json, input: LabourRequest | PartsRequest, selectedFamily?: Json): Json {
+  const family = selectedFamily ?? (!query.familyFilter || input.family === "All" ? { value: "All", criteria: "All" } : { value: input.family, criteria: input.family });
+  const contentFormat = typeof query.selectedContentFormat === "string"
+    ? query.selectedContentFormat
+    : Array.isArray(query.contentFormat)
+      ? typeof query.contentFormat[0] === "string" ? query.contentFormat[0] : query.contentFormat[0]?.value ?? null
+      : query.contentFormat ?? null;
   return {
     queryLabel: `${query.queryCode} - ${query.queryDesc}`,
     queryid: query.id,
     family: family.value,
     criteria: family.criteria,
-    exportType: query.familyFilter ? (input.family === "All" ? "F" : "P") : query.exportType,
+    exportType: query.familyFilter ? (input.family === "All" ? "F" : "P") : (query.exportType ?? "F"),
     exportFormat: input.format,
     profile: String(profile.value).toLowerCase(),
     commercialName: profile.user,
-    brand: family.brand ?? profile.brand,
+    // ASMDOR rejects the literal "All" for powertrain families; Access falls back to the profile brands.
+    brand: !family.brand || family.brand === "All" ? profile.brand : family.brand,
     applicabilityFilter: [],
     editorApplicabilityFilter: [],
-    contentFormat: typeof query.selectedContentFormat === "string" ? query.selectedContentFormat : null,
-    language: input.language,
+    contentFormat,
+    language: input.language ?? null,
     publishedDate: input.publishedAfter?.replaceAll("-", "") ?? "",
     countryCode: null,
     interpretModEvent: profile.interpretModEvent,

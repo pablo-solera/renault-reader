@@ -1,6 +1,6 @@
 # Renault Reader
 
-API Bun + Express para generar exportaciones Labour Times (`TM01`) de ASMDOR y almacenar el ZIP en S3 compatible.
+API Bun + Express para generar exportaciones de ASMDOR y almacenarlas en S3 compatible.
 
 ## Requisitos
 
@@ -89,7 +89,35 @@ Content-Type: application/json
 
 La respuesta es `202` con `requestId`. Consulta `GET /labours/:requestId`. Cuando el estado sea `completed`, descarga mediante `GET /labours/:requestId/download`.
 
-`POST /parts` devuelve `501` hasta implementar ese flujo.
+### Parts
+
+Los códigos soportados son `REF01`, `REF02`, `REF03`, `REF04`, `REF05`, `PR03`, `PR05`, `PR06` y `PR08`.
+Consulta `POST /parts/options` con `{ "exportType": "PR08", "range": "active" }` y después crea el job con `POST /parts`.
+`format` y `language` son opcionales cuando el export no los requiere. `axCode`, `epc` y `manufacturer` se conservan como contexto del proceso. Para `REF05`, `previousRequestId` genera las hojas `New` y `Deleted` del Excel TAPV. Los archivos se almacenan bajo `S3_PARTS_PREFIX/{exportType}/` y el reporte final bajo `reports/`.
+
+En `REF04`, `modelIds` permite replicar la selección de modelos del Access. Si no se indica `epc`, se genera automáticamente como `MMYY`. El mapeo código/descripción de fabricante se configura con `RENAULT_MANUFACTURER_DESCRIPTIONS` en formato JSON.
+
+Además del archivo original, el worker guarda `structured/{requestId}.json` con los registros parseados, hashes MD5 de ilustraciones PR03 y los resultados de preprocessing/comparación disponibles.
+
+### Procesamiento completo de modelos
+
+`POST /models` replica el flujo de Access: procesa `REF04` y `REF05`, filtra el powertrain por los `modelIds`, deriva las familias de vehículo, motor, caja y batería, y procesa `PR08`/`PR03` por cada familia. También puede activar `REF01`, `REF02`, `REF03`, `PR05` y `PR06` mediante `exports`.
+
+```json
+{
+  "axCode": "5208",
+  "edition": "02/0",
+  "manufacturer": "DACIA",
+  "description": "Bigster (SVA)",
+  "family": "X1310",
+  "modelIds": ["MODEL-0013", "MODEL-0014"],
+  "range": "active",
+  "language": "en",
+  "exports": { "REF01": true, "REF02": true, "REF03": true, "PR05": true, "PR06": true, "PR08": true, "PR03": true }
+}
+```
+
+Consulta `GET /models/:requestId`; al completar, `GET /models/:requestId/download` descarga el ZIP con el Excel TAPV filtrado y `structured.json` del procesamiento.
 
 ## Verificación
 

@@ -6,6 +6,41 @@ export type LabourRequest = {
   publishedAfter?: string;
 };
 
+export const PARTS_EXPORT_CODES = ["REF01", "REF02", "REF03", "REF04", "REF05", "PR03", "PR05", "PR06", "PR08"] as const;
+export type PartsExportCode = typeof PARTS_EXPORT_CODES[number];
+
+export type PartsRequest = {
+  exportType: PartsExportCode;
+  axCode?: string;
+  epc?: string;
+  manufacturer?: string;
+  description?: string;
+  edition?: string;
+  modelIds?: string[];
+  previousRequestId?: string;
+  illustrationsRequestId?: string;
+  treeRequestId?: string;
+  family?: string;
+  format?: string;
+  language?: string;
+  range: string;
+  publishedAfter?: string;
+};
+
+export type ModelExtractionRequest = {
+  axCode: string;
+  edition: string;
+  manufacturer: string;
+  description: string;
+  family: string;
+  modelIds: string[];
+  range: string;
+  language?: string;
+  format?: string;
+  exports?: Partial<Record<PartsExportCode, boolean>>;
+  resumeRequestId?: string;
+};
+
 export type JobStatus = "queued" | "authenticating" | "discovering" | "validating" | "checking_remote" | "submitted" | "waiting" | "downloading" | "uploading" | "completed" | "failed";
 
 export type JobState = {
@@ -16,6 +51,9 @@ export type JobState = {
   remoteRequestId?: string;
   fileName?: string;
   objectKey?: string;
+  rawObjectKey?: string;
+  structuredKey?: string;
+  reportObjectKey?: string;
   error?: string;
   failureOperation?: string;
   failureCode?: string;
@@ -23,6 +61,8 @@ export type JobState = {
   failureRequestId?: string;
   createdAt: string;
   updatedAt: string;
+  children?: Record<string, { requestId: string; status?: JobStatus }>;
+  excelObjectKey?: string;
 };
 
 export type RenaultQuery = {

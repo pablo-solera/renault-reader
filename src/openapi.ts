@@ -3,13 +3,14 @@ export const openapi = {
   info: {
     title: "Renault Reader API",
     version: "1.0.0",
-    description: "API para generar y descargar exportaciones Labour Times de ASMDOR.",
+    description: "API para generar y descargar exportaciones de ASMDOR.",
   },
   servers: [{ url: "http://localhost:3000", description: "Local" }],
   tags: [
     { name: "System", description: "Estado del servicio" },
     { name: "Labours", description: "Exportaciones Labour Times TM01" },
-    { name: "Parts", description: "Endpoints reservados para Parts" },
+     { name: "Parts", description: "Exportaciones de piezas y referencias de ASMDOR" },
+     { name: "Models", description: "Procesamiento completo de modelos y generación TAPV" },
   ],
   paths: {
     "/health": {
@@ -66,11 +67,50 @@ export const openapi = {
         },
       },
     },
+    "/parts/options": {
+      post: {
+        tags: ["Parts"], summary: "Obtiene las opciones autorizadas para un export de Parts",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PartsOptionsRequest" } } } },
+        responses: { "200": { description: "Opciones autorizadas", content: { "application/json": { schema: { $ref: "#/components/schemas/PartsOptionsResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" } },
+      },
+    },
     "/parts": {
       post: {
         tags: ["Parts"],
-        summary: "Placeholder para Parts",
-        responses: { "501": { description: "Parts todavía no está implementado", content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } } } } },
+        summary: "Encola una exportación de Parts",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/PartsRequest" } } } },
+        responses: { "202": { description: "Exportación encolada", content: { "application/json": { schema: { $ref: "#/components/schemas/QueuedResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" } },
+      },
+    },
+    "/parts/{requestId}": {
+      get: {
+        tags: ["Parts"], summary: "Consulta el estado de una exportación de Parts", parameters: [{ $ref: "#/components/parameters/RequestId" }],
+        responses: { "200": { description: "Estado del job", content: { "application/json": { schema: { $ref: "#/components/schemas/LabourStatus" } } } }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
+    "/parts/{requestId}/download": {
+      get: {
+        tags: ["Parts"], summary: "Descarga un export de Parts completado", parameters: [{ $ref: "#/components/parameters/RequestId" }],
+        responses: { "307": { description: "Redirección temporal a S3/MinIO" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "El archivo todavía no está disponible" } },
+      },
+    },
+    "/models": {
+      post: {
+        tags: ["Models"], summary: "Encola el procesamiento completo de un modelo",
+        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ModelExtractionRequest" } } } },
+        responses: { "202": { description: "Procesamiento encolado", content: { "application/json": { schema: { $ref: "#/components/schemas/QueuedResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" } },
+      },
+    },
+    "/models/{requestId}": {
+      get: {
+        tags: ["Models"], summary: "Consulta el procesamiento de un modelo", parameters: [{ $ref: "#/components/parameters/RequestId" }],
+        responses: { "200": { description: "Estado del procesamiento", content: { "application/json": { schema: { $ref: "#/components/schemas/LabourStatus" } } } }, "404": { $ref: "#/components/responses/NotFound" } },
+      },
+    },
+    "/models/{requestId}/download": {
+      get: {
+        tags: ["Models"], summary: "Descarga el informe TAPV", parameters: [{ $ref: "#/components/parameters/RequestId" }],
+        responses: { "307": { description: "Redirección temporal a S3/MinIO" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "El informe todavía no está disponible" } },
       },
     },
   },
@@ -90,6 +130,26 @@ export const openapi = {
         required: ["range"],
         properties: {
           range: { type: "string", example: "active" },
+        },
+      },
+      PartsOptionsRequest: {
+        type: "object", required: ["exportType", "range"], properties: {
+          exportType: { type: "string", enum: ["REF01", "REF02", "REF03", "REF04", "REF05", "PR03", "PR05", "PR06", "PR08"] }, range: { type: "string", example: "active" },
+        },
+      },
+      PartsOptionsResponse: {
+        type: "object", required: ["queryCode", "profile", "range", "families", "formats", "languages"], properties: {
+          queryCode: { type: "string", example: "PR08" }, queryDesc: { type: "string" }, profile: { type: "string" }, range: { type: "string" }, families: { type: "array", items: { $ref: "#/components/schemas/Family" } }, formats: { type: "array", items: { type: "string" } }, languages: { type: "array", nullable: true, items: { type: "string" } },
+        },
+      },
+      PartsRequest: {
+        type: "object", required: ["exportType", "range"], properties: {
+          exportType: { type: "string", enum: ["REF01", "REF02", "REF03", "REF04", "REF05", "PR03", "PR05", "PR06", "PR08"] }, axCode: { type: "string", example: "5208" }, epc: { type: "string", example: "0826" }, manufacturer: { type: "string", example: "DACIA" }, description: { type: "string", example: "Bigster (SVA)" }, edition: { type: "string", pattern: "^\\d{2}/\\d$", example: "02/0" }, modelIds: { type: "array", items: { type: "string" }, description: "Modelos REF04 seleccionados; si se omite se procesan todos" }, family: { type: "string", example: "X1310" }, format: { type: "string", example: "zip" }, language: { type: "string", example: "en" }, range: { type: "string", example: "active" }, publishedAfter: { type: "string", format: "date" }, previousRequestId: { type: "string", format: "uuid", description: "RequestId de la edición REF05 anterior para generar hojas New/Deleted" }, illustrationsRequestId: { type: "string", format: "uuid" },
+        },
+      },
+      ModelExtractionRequest: {
+        type: "object", required: ["axCode", "edition", "manufacturer", "description", "family", "modelIds", "range"], properties: {
+          axCode: { type: "string", example: "5208" }, edition: { type: "string", pattern: "^\\d{2}/\\d$", example: "02/0" }, manufacturer: { type: "string", example: "DACIA" }, description: { type: "string", example: "Bigster (SVA)" }, family: { type: "string", example: "X1310" }, modelIds: { type: "array", minItems: 1, items: { type: "string" } }, range: { type: "string", example: "active" }, language: { type: "string", example: "en" }, format: { type: "string", example: "zip" }, exports: { type: "object", additionalProperties: { type: "boolean" } },
         },
       },
       LabourRequest: {
@@ -145,7 +205,10 @@ export const openapi = {
           progress: { type: "integer", nullable: true, minimum: 0, maximum: 100 },
           remoteRequestId: { type: "string", nullable: true },
           fileName: { type: "string", nullable: true },
-          objectKey: { type: "string", nullable: true, example: "RENAULT_GROUP/files_datasource/RENAULT/Labour_Time/renault_<requestId>_<fileName>" },
+           objectKey: { type: "string", nullable: true, example: "RENAULT_GROUP/files_datasource/RENAULT/Labour_Time/renault_<requestId>_<fileName>" },
+           rawObjectKey: { type: "string", nullable: true },
+           structuredKey: { type: "string", nullable: true },
+           reportObjectKey: { type: "string", nullable: true },
           downloadUrl: { type: "string", nullable: true, example: "/labours/550e8400-e29b-41d4-a716-446655440000/download" },
           error: { type: "string", nullable: true },
           createdAt: { type: "string", format: "date-time" },
