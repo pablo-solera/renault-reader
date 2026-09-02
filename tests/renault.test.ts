@@ -5,6 +5,13 @@ import { normalizeUploadContentType } from "../src/storage.js";
 import { compareCatalogRecords, compareImageHashes, compareTapv, currentEpc, normalizeAxCode, normalizeDescription, normalizeEdition, normalizeManufacturer, parsePartsArchive, preprocessCatalogRecords, preprocessModelVehicleRecords } from "../src/parts.js";
 import { zipSync, strToU8 } from "fflate";
 import { deriveFamilies, selectPowertrain } from "../src/powertrain.js";
+import { buildCriteriaIndex } from "../src/preprocessing/criteria.js";
+import { clearHtc, evaluateApplicability } from "../src/preprocessing/applicability.js";
+import { buildTreeIndex, navigationPath } from "../src/preprocessing/tree.js";
+import { createCatalogHash } from "../src/preprocessing/hash.js";
+import { getAccionaConfig, extractionDatabaseName } from "../src/db/acciona.js";
+import { assertSandboxDatabase, ACCIONA_TABLES } from "../src/acciona/writers.js";
+import { flattenPartsCatalog, flattenRepairTree, toAccionaPartsData, toAccionaReferences } from "../src/acciona/transform.js";
 
 describe("Renault Labour helpers", () => {
   test("filters and sorts authorized partner families", () => {
@@ -94,7 +101,7 @@ describe("Renault Labour helpers", () => {
   test("builds the Access-compatible Parts path", () => {
     const input = { exportType: "REF04", manufacturer: "BRAND DACIA", description: "Big ster/SVA", family: "X1310", axCode: "5208 ", edition: "02/0", range: "active" } as any;
     expect(buildPartsBaseKey(input, new Date("2026-08-31T12:00:00Z"))).toBe("RENAULT_GROUP/files_datasource/DACIA/Parts/5208_Bigster-SVA_X1310/02-0/20260831");
-    expect(buildPartsObjectKey("request-3", "REF04", "model_vehicle.zip", input)).toContain("/DACIA/Parts/5208_Bigster-SVA_X1310/02-0/20260831/REF04/");
+    expect(buildPartsObjectKey("request-3", "REF04", "model_vehicle.zip", input, new Date("2026-08-31T12:00:00Z"))).toContain("/DACIA/Parts/5208_Bigster-SVA_X1310/02-0/20260831/REF04/");
     expect(normalizeAxCode("5208 02/0")).toBe("520802/0");
     expect(normalizeManufacturer("BRAND DACIA TRUCKS")).toBe("DACIA");
     expect(normalizeDescription("Big ster/SVA&%" )).toBe("Bigster-SVA__");
@@ -117,5 +124,54 @@ describe("Renault Labour helpers", () => {
       { familyVehicle: "X1310", familyEngine: "HXX", familyGearbox: "DCX", familyBattery: "TLX" },
       { familyVehicle: "", familyEngine: "BT7", familyGearbox: "BTA", familyBattery: "" },
     ])).toEqual(["X1310", "HXX", "BT7", "KXX", "DCX", "BTA", "DBX", "TLX"]);
+  });
+
+  test("evaluates Access HTC applicability across all selected TAPV rows", () => {
+    const criteria = buildCriteriaIndex([{ HTC: "X1310", objectOriginCode: 7 }, { HTC: "SVA", objectOriginCode: 8 }]);
+    const rows = [{ familyVehicle: "X1310", bodyType: "SVA" }, { familyVehicle: "X1310", bodyType: "SUV" }];
+    expect(evaluateApplicability("X1310/SVA/M2024|AREA", criteria, rows, rows[0], "vehicle")).toEqual({ valid: true, cleaned: "X1310/SVA/M2024|AREA", comparison: "X1310/SVA/M2024|AREA" });
+    expect(clearHtc("UNKNOWN/X1310", criteria, rows[0], rows[0], "VEHICLE")).toBe("UNKNOWN/X1310");
+  });
+
+  test("builds Access navigation paths and excludes the ignored node", () => {
+    const index = buildTreeIndex([{ nodeId: "N1", labelEN: "Body" }, { nodeId: "N-21347", labelEN: "Ignored" }, { nodeId: "N2", labelEN: "Door" }]);
+    expect(navigationPath(["N1", "N-21347", "N2"], index)).toBe("Body\r\n>> Door");
+  });
+
+  test("creates stable Access-compatible catalog hashes", () => {
+    const record = { plateId: "P1", illustrationFile: "a.png", sectionApplicabilityCleanedComparison: "A", hotSpotNumber: "1", partNumber: "123" };
+    expect(createCatalogHash(record)).toBe(createCatalogHash({ ...record }));
+  });
+
+  test("loads Acciona connection settings only from environment", () => {
+    const cfg = getAccionaConfig({ ACCIONA_SQL_HOST: "staging", ACCIONA_SQL_USER: "user", ACCIONA_SQL_PASSWORD: "secret", ACCIONA_IMAGES_ROOT: "C:/images" });
+    expect(extractionDatabaseName(cfg, "DACIA", "0826")).toBe("Extraccion_DACIA0826");
+  });
+
+  test("restricts Acciona writers to the sandbox database", () => {
+    expect(() => assertSandboxDatabase("_MOK_MOK")).not.toThrow();
+    expect(() => assertSandboxDatabase("Extraccion_DACIA0826")).toThrow();
+    expect(ACCIONA_TABLES.referencias).toBe("Referencias");
+  });
+
+  test("flattens Renault PR08 plates into Access catalog rows", () => {
+    const rows = flattenPartsCatalog([{ plateId: "X_1", nodes: ["N1"], applicability: [{ mtc: "X" }], lines: [{ partNumber: "P", applicability: [{ mtc: "X/SVA", startDate: "20260101", endDate: "20261231" }] }] }]);
+    expect(rows[0]).toMatchObject({ plateId: "X_1", nodes: "N1", sectionApplicability: "X", partNumber: "P", partsApplicability: "X/SVA|||20260101|20261231" });
+  });
+
+  test("flattens nested REF03 repair trees", () => {
+    const rows = flattenRepairTree({ REPAIR_TREE: [{ nodeId: "N1", level: 1, label: [{ language: "EN", longLabel: "Body" }], childNodes: [{ nodeId: "N2", level: 2, label: [{ language: "EN", longLabel: "Door" }], childNodes: [] }] }] });
+    expect(rows).toHaveLength(2);
+    expect(rows[1].labelEN).toBe("Door");
+  });
+
+  test("maps active catalog applicability to Acciona reference rows", () => {
+    const rows = toAccionaReferences([{ ActivePartsNumber: 1, plateId: "X_123", hotSpotNumber: 4, genericPart: "G", partNumber: "P", partsApplicabilityCleaned: "X/SVA|A|(Plant)|20260102|20261203" }], "5208", "X1310");
+    expect(rows[0]).toMatchObject({ IdModeloAudatex: "5208", IdSeccion: "123", Dato8: "02/01/2026", Dato9: "03/12/2026" });
+    expect(rows[0].DatoFecha).toBeInstanceOf(Date);
+  });
+
+  test("maps PR06 rows to PartsData without losing the source fields", () => {
+    expect(toAccionaPartsData([{ partNumber: "P", brandCode: "01", designation: "Part" }])[0]).toMatchObject({ partNumber: "P", brandCode: "01", designation: "Part", active: true });
   });
 });

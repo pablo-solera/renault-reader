@@ -3,3 +3,6 @@ node_modules/
 data/
 dist/
 *.log
+compare-out/
+model-*.zip
+sandbox-images/

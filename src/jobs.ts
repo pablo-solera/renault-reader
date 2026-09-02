@@ -42,9 +42,9 @@ export function buildPartsBaseKey(input: PartsRequest, date = new Date()): strin
   return `${prefix}/${manufacturer}/${config.s3PartsSegment}/${normalizeAxCode(input.axCode)}_${description}_${input.family}/${edition}/${datePart}`;
 }
 
-export function buildPartsObjectKey(requestId: string, exportType: string, fileName: string, input?: PartsRequest): string {
+export function buildPartsObjectKey(requestId: string, exportType: string, fileName: string, input?: PartsRequest, date = new Date()): string {
   const safeFileName = fileName.replace(/[\\/]/g, "_").replace(/^\.+/, "_");
-  const base = input && buildPartsBaseKey(input);
+  const base = input && buildPartsBaseKey(input, date);
   if (base) return `${base}/${exportType}/renault_${requestId}_${safeFileName}`;
   const prefix = config.s3PartsPrefix.replace(/^\/+|\/+$/g, "");
   if (!prefix) throw new Error("S3_PARTS_PREFIX is required");
