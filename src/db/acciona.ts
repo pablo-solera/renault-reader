@@ -13,6 +13,11 @@ export type AccionaConfig = {
   targetDatabase: string;
   allowedDatabases: string[];
   imagesRoot: string;
+  criteriaLanguage: string;
+  descriptionLanguageId: number;
+  countryCode: string;
+  activeFlag: string;
+  performedFlag: string;
   connectionTimeoutMs: number;
   requestTimeoutMs: number;
 };
@@ -34,6 +39,11 @@ export function getAccionaConfig(env: NodeJS.ProcessEnv = process.env): AccionaC
     targetDatabase: read("ACCIONA_SQL_TARGET_DB") ?? "_MOK_MOK",
     allowedDatabases: (read("ACCIONA_ALLOWED_DATABASES") ?? "_MOK_MOK").split(",").map((value) => value.trim()).filter(Boolean),
     imagesRoot: requiredFrom(env, "ACCIONA_IMAGES_ROOT"),
+    criteriaLanguage: read("ACCIONA_CRITERIA_LANGUAGE") ?? "EN",
+    descriptionLanguageId: Number(read("ACCIONA_DESCRIPTION_LANGUAGE_ID") ?? 3),
+    countryCode: read("ACCIONA_COUNTRY_CODE") ?? "GEN",
+    activeFlag: read("ACCIONA_ACTIVE_FLAG") ?? "0",
+    performedFlag: read("ACCIONA_PERFORMED_FLAG") ?? "0",
     connectionTimeoutMs: positiveTimeout(env, "ACCIONA_SQL_CONNECT_TIMEOUT_MS", 30000),
     requestTimeoutMs: positiveTimeout(env, "ACCIONA_SQL_REQUEST_TIMEOUT_MS", 120000),
   };

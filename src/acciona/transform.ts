@@ -35,7 +35,7 @@ export function flattenPartsCatalog(plates: AnyRow[]): AnyRow[] {
   })));
 }
 
-export function flattenCriteriaLabels(records: AnyRow[]): AnyRow[] {
+export function flattenCriteriaLabels(records: AnyRow[], language = "EN"): AnyRow[] {
   return records.map((record) => {
     const groups = Array.isArray(record.labels) ? record.labels : [];
     const group = groups[0] ?? {};
@@ -47,8 +47,8 @@ export function flattenCriteriaLabels(records: AnyRow[]): AnyRow[] {
     objectOriginCode: String(record.objectOriginCode ?? ""),
     labels: labels[0] ?? "",
     subLabels: "",
-    lang: "EN",
-    description: String((labelValues as AnyRow)?.en ?? labelValues ?? "").slice(0, 255),
+     lang: language,
+     description: String((labelValues as AnyRow)?.[language.toLowerCase()] ?? labelValues ?? "").slice(0, 255),
     insertDate: new Date(),
     active: true,
     };
@@ -113,7 +113,7 @@ export function toAccionaReferences(records: AnyRow[], axCode: string, model: st
   });
 }
 
-export function toAccionaDesSecciones(records: AnyRow[], axCode: string, model: string, epc: string, imagesRoot: string): AnyRow[] {
+export function toAccionaDesSecciones(records: AnyRow[], axCode: string, model: string, epc: string, imagesRoot: string, performedFlag = "0"): AnyRow[] {
   const seen = new Set<string>();
   return records.filter((record) => record.ActiveSection === 1 && !seen.has(String(record.plateId)) && seen.add(String(record.plateId))).map((record) => {
     const section = String(record.plateId ?? "").split("_")[1] ?? "";
@@ -124,7 +124,7 @@ export function toAccionaDesSecciones(records: AnyRow[], axCode: string, model: 
       Modelo: model,
       Seccion: section,
       Descripcion: ` Applicability: ${record.sectionApplicabilityCleaned ?? ""}\r\n\r\n${navigation}`,
-      Realizada: "0",
+       Realizada: performedFlag,
       Audatex: record.plateId,
       DesOriginal: null,
       DesSeccion: null,
@@ -145,9 +145,9 @@ export function toAccionaFiltroSecciones(sections: AnyRow[], model: string): Any
   return values.filter((section) => !seen.has(section) && (seen.add(section), true)).map((section) => ({ Modelo: model, Seccion: section, Ordinal: ordinal++ }));
 }
 
-export function toAccionaDescriptions(records: AnyRow[], manufacturer: string, model = ""): AnyRow[] {
+export function toAccionaDescriptions(records: AnyRow[], manufacturer: string, model = "", languageId = 3): AnyRow[] {
   const seen = new Set<string>();
-  return records.filter((record) => (record.ActivePartsNumber === 1 || record.ActivePartsNumber == null) && record.partNumber && !seen.has(String(record.partNumber)) && seen.add(String(record.partNumber))).map((record) => ({ Fabricante: manufacturer, Num: `A_${model ? `${model}_` : ""}${record.partNumber}`, Idioma: 3, Descripcion: record.designationEN ?? record.genericPartDesignationEN ?? record.designation ?? "" }));
+  return records.filter((record) => (record.ActivePartsNumber === 1 || record.ActivePartsNumber == null) && record.partNumber && !seen.has(String(record.partNumber)) && seen.add(String(record.partNumber))).map((record) => ({ Fabricante: manufacturer, Num: `A_${model ? `${model}_` : ""}${record.partNumber}`, Idioma: languageId, Descripcion: record.designationEN ?? record.genericPartDesignationEN ?? record.designation ?? "" }));
 }
 
 export function toAccionaSustituciones(records: AnyRow[], replacements: AnyRow[], model: string, descriptions: Map<string, string>): AnyRow[] {
