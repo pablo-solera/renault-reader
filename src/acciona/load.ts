@@ -28,6 +28,21 @@ async function cleanupTable(transaction: sql.Transaction, table: string, dataset
   throw new Error(`No model-scoped cleanup defined for ${table}`);
 }
 
+async function snapshotPrevious(transaction: sql.Transaction, table: string, dataset: AccionaDataset): Promise<void> {
+  const previous = table === "Referencias" ? "ComparaPrevioReferencias" : table === "DesSecciones" ? "ComparaPrevioDesSecciones" : undefined;
+  if (!previous) return;
+  const request = new sql.Request(transaction).input("ax", dataset.axCode).input("model", dataset.model);
+  const exists = await request.query("SELECT OBJECT_ID(@table, 'U') AS id");
+  // Comparison tables are optional in the sandbox schema but present in Access production.
+  if (!exists.recordset[0]?.id) return;
+  const columnsResult = await new sql.Request(transaction).input("table", `dbo.${table}`).query("SELECT c.name FROM sys.columns c WHERE c.object_id=OBJECT_ID(@table) AND c.is_identity=0 ORDER BY c.column_id");
+  const columns = columnsResult.recordset.map((row) => `[${row.name}]`);
+  if (!columns.length) return;
+  const where = table === "Referencias" ? "IdModeloAudatex=@ax AND IdModelo=@model" : "idAudatex=@ax AND Modelo=@model";
+  await request.query(`DELETE FROM dbo.[${previous}] WHERE ${where}`);
+  await new sql.Request(transaction).input("ax", dataset.axCode).input("model", dataset.model).query(`INSERT INTO dbo.[${previous}] (${columns.join(", ")}) SELECT ${columns.join(", ")} FROM dbo.[${table}] WHERE ${where}`);
+}
+
 export async function loadAccionaDataset(dataset: AccionaDataset, options: AccionaLoadOptions = {}): Promise<Record<string, number>> {
   const config = getAccionaConfig();
   const targetDatabase = options.targetDatabase ?? config.targetDatabase;
@@ -41,6 +56,7 @@ export async function loadAccionaDataset(dataset: AccionaDataset, options: Accio
     const result: Record<string, number> = {};
     for (const [table, data] of Object.entries(dataset.tables)) {
       result[table] = await withTransaction(pool, async (transaction) => {
+        await snapshotPrevious(transaction, table, dataset);
         await cleanupTable(transaction, table, dataset, data);
         const inserted = await insertJsonRows(transaction, table, Object.keys(data.types), data.types, data.rows);
         if (table === "CriteriaLabels") {
