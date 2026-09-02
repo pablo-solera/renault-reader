@@ -115,8 +115,9 @@ export const openapi = {
     },
     "/models/{requestId}/acciona": {
       post: {
-        tags: ["Models"], summary: "Carga un modelo completado en el sandbox Acciona",
-        parameters: [{ $ref: "#/components/parameters/RequestId" }],
+         tags: ["Models"], summary: "Carga un modelo completado en Acciona",
+         parameters: [{ $ref: "#/components/parameters/RequestId" }],
+         requestBody: { required: false, content: { "application/json": { schema: { $ref: "#/components/schemas/AccionaLoadRequest" } } } },
         responses: { "200": { description: "Carga completada" }, "400": { $ref: "#/components/responses/BadRequest" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "El modelo todavía no está listo" } },
       },
     },
@@ -132,6 +133,7 @@ export const openapi = {
     schemas: {
       HealthResponse: { type: "object", required: ["status"], properties: { status: { type: "string", example: "ok" } } },
       ErrorResponse: { type: "object", required: ["error"], properties: { error: { type: "string", example: "Labour file is not ready" }, status: { type: "string", nullable: true } } },
+      AccionaLoadRequest: { type: "object", properties: { targetDatabase: { type: "string", example: "_MOK_MOK" }, confirmProduction: { type: "boolean", description: "Obligatorio para escribir fuera de _MOK_MOK" }, dryRun: { type: "boolean", description: "Calcula el volumen sin modificar la base" } } },
       LabourOptionsRequest: {
         type: "object",
         required: ["range"],

@@ -10,7 +10,7 @@ import { clearHtc, evaluateApplicability } from "../src/preprocessing/applicabil
 import { buildTreeIndex, navigationPath } from "../src/preprocessing/tree.js";
 import { createCatalogHash } from "../src/preprocessing/hash.js";
 import { getAccionaConfig, extractionDatabaseName } from "../src/db/acciona.js";
-import { assertSandboxDatabase, ACCIONA_TABLES } from "../src/acciona/writers.js";
+import { assertAllowedDatabase, ACCIONA_TABLES } from "../src/acciona/writers.js";
 import { flattenPartsCatalog, flattenRepairTree, toAccionaPartsData, toAccionaReferences } from "../src/acciona/transform.js";
 import { compareReferences } from "../src/acciona/compare.js";
 
@@ -150,9 +150,10 @@ describe("Renault Labour helpers", () => {
     expect(extractionDatabaseName(cfg, "DACIA", "0826")).toBe("Extraccion_DACIA0826");
   });
 
-  test("restricts Acciona writers to the sandbox database", () => {
-    expect(() => assertSandboxDatabase("_MOK_MOK")).not.toThrow();
-    expect(() => assertSandboxDatabase("Extraccion_DACIA0826")).toThrow();
+  test("restricts Acciona writers to explicitly allowlisted databases", () => {
+    expect(() => assertAllowedDatabase("_MOK_MOK", ["_MOK_MOK"])).not.toThrow();
+    expect(() => assertAllowedDatabase("Extraccion_DACIA0826", ["_MOK_MOK"])).toThrow();
+    expect(() => assertAllowedDatabase("Extraccion_DACIA0826", ["Extraccion_DACIA0826"])).toThrow("explicit confirmation");
     expect(ACCIONA_TABLES.referencias).toBe("Referencias");
   });
 

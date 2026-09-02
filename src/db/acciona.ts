@@ -11,6 +11,7 @@ export type AccionaConfig = {
   toyotaConfigDatabase: string;
   globalDatabase: string;
   targetDatabase: string;
+  allowedDatabases: string[];
   imagesRoot: string;
   connectionTimeoutMs: number;
   requestTimeoutMs: number;
@@ -31,6 +32,7 @@ export function getAccionaConfig(env: NodeJS.ProcessEnv = process.env): AccionaC
     toyotaConfigDatabase: read("ACCIONA_SQL_TOYOTA_CONFIG_DB") ?? "Extraccion_TOYOTA_Config",
     globalDatabase: read("ACCIONA_SQL_GLOBAL_DB") ?? "Extraccion_RenaultGroup_Global",
     targetDatabase: read("ACCIONA_SQL_TARGET_DB") ?? "_MOK_MOK",
+    allowedDatabases: (read("ACCIONA_ALLOWED_DATABASES") ?? "_MOK_MOK").split(",").map((value) => value.trim()).filter(Boolean),
     imagesRoot: requiredFrom(env, "ACCIONA_IMAGES_ROOT"),
     connectionTimeoutMs: positiveTimeout(env, "ACCIONA_SQL_CONNECT_TIMEOUT_MS", 30000),
     requestTimeoutMs: positiveTimeout(env, "ACCIONA_SQL_REQUEST_TIMEOUT_MS", 120000),

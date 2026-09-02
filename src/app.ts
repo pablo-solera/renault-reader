@@ -6,7 +6,7 @@ import { enqueueLabour, enqueueModel, enqueueParts, getState } from "./jobs.js";
 import { PARTS_EXPORT_CODES, type LabourRequest, type ModelExtractionRequest, type PartsRequest } from "./types.js";
 import { normalizeAxCode, normalizeEdition, normalizeManufacturer } from "./parts.js";
 import { openapi } from "./openapi.js";
-import { buildSandboxDataset } from "./acciona/load-model.js";
+import { buildAccionaDataset } from "./acciona/load-model.js";
 import { loadAccionaDataset } from "./acciona/load.js";
 
 export const app = express();
@@ -200,8 +200,8 @@ app.post("/models/:requestId/acciona", async (request: Request, response: Respon
     const state = await getState(requestId);
     if (!state) return response.status(404).json({ error: "Model extraction not found" });
     if (state.status !== "completed") return response.status(409).json({ error: "Model extraction is not ready", status: state.status });
-    const result = await loadAccionaDataset(await buildSandboxDataset(requestId));
-    return response.json({ requestId, target: "_MOK_MOK", result });
+    const result = await loadAccionaDataset(await buildAccionaDataset(requestId), { targetDatabase: request.body?.targetDatabase, confirmProduction: request.body?.confirmProduction === true, dryRun: request.body?.dryRun === true });
+    return response.json({ requestId, target: request.body?.targetDatabase ?? "_MOK_MOK", result });
   } catch (error) {
     return response.status(400).json({ error: error instanceof Error ? error.message : "Acciona load failed" });
   }

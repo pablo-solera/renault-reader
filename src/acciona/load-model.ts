@@ -17,7 +17,6 @@ import { getAccionaConfig } from "../db/acciona.js";
 
 type AnyRow = Record<string, any>;
 
-const defaultRequestId = "4aa5bf62-acfc-4571-8938-9454dfaaf2ed";
 const read = async (id: string) => {
   const state = await getState(id);
   if (!state?.structuredKey) throw new Error(`Missing structured output for ${id}`);
@@ -25,7 +24,7 @@ const read = async (id: string) => {
 };
 const types = (entries: Array<[string, string]>) => Object.fromEntries(entries);
 
-export async function buildSandboxDataset(requestId = defaultRequestId) {
+export async function buildAccionaDataset(requestId: string) {
   const root = await getState(requestId);
   if (!root?.children) throw new Error(`Request ${requestId} not found`);
   const children = root.children;
@@ -34,7 +33,8 @@ export async function buildSandboxDataset(requestId = defaultRequestId) {
     read(children.REF03.requestId), read(children.PR05.requestId), read(children.PR06.requestId),
   ]);
   const plates = (await Promise.all(Object.keys(children).filter((key) => key.startsWith("PR08_")).map((key) => read(children[key].requestId)))).flatMap((result) => result.records);
-  const input = root.modelInput ?? { axCode: "5208", family: "X1310", manufacturer: "DACIA", description: "Bigster (SVA)", edition: "02/0", modelIds: ["MODEL-0013", "MODEL-0014"], range: "active" };
+  const input = root.modelInput;
+  if (!input) throw new Error(`Request ${requestId} has no modelInput; relaunch the model extraction with POST /models`);
   const models = ref04.records;
   const processed = preprocessRenaultCatalog(plates, ref02.records, selectPowertrain(ref05.records, models) as Record<string, unknown>[], models, ref03.records[0]);
   const model = String(input.family);
@@ -43,7 +43,7 @@ export async function buildSandboxDataset(requestId = defaultRequestId) {
   const epc = input.epc ?? epcFromDate(root.createdAt);
   const imagesRoot = getAccionaConfig().imagesRoot.replace(/[\\/]+$/, "");
   const sections = toAccionaDesSecciones(processed, axCode, model, epc, `${imagesRoot}\\${manufacturer}\\${epc}\\${model}`);
-  const references = toAccionaReferences(processed, axCode, model, pr05.records).map((row, index) => ({ ...row, ID: 14441 + index }));
+  const references = toAccionaReferences(processed, axCode, model, pr05.records);
   const descriptionMap = new Map(pr06.records.map((row) => [`A_${model}_${row.partNumber}`, String(row.designation ?? "")]));
   const activePartNumbers = new Set((processed as AnyRow[]).filter((record) => record.ActivePartsNumber === 1).map((record) => String(record.partNumber)));
   const replacementPartNumbers = new Set(pr05.records.filter((replacement) => activePartNumbers.has(String(replacement.partNumberReplaced))).flatMap((replacement) => (Array.isArray(replacement.target) ? replacement.target : []).map((target: AnyRow) => String(target.partNumber))));
@@ -59,11 +59,13 @@ export async function buildSandboxDataset(requestId = defaultRequestId) {
       CriteriaLabels: { rows: flattenCriteriaLabels(ref02.records), types: types([["Hash", "nchar(28)"], ["HTC", "nvarchar(10)"], ["objectOriginCode", "nvarchar(10)"], ["labels", "nvarchar(10)"], ["subLabels", "nvarchar(10)"], ["lang", "nvarchar(5)"], ["description", "nvarchar(255)"], ["insertDate", "datetime2"], ["active", "bit"]]) },
       PartsData: { rows: toAccionaPartsData(pr06.records), types: types([["Hash", "nchar(28)"], ["partNumber", "nchar(20)"], ["brandCode", "nchar(2)"], ["corporate", "nchar(10)"], ["familyCode", "nchar(10)"], ["productModelCode", "nchar(10)"], ["codifiedSigns", "nchar(255)"], ["types", "nchar(50)"], ["partsEquivalentRenault", "nchar(1000)"], ["equivalentParts", "nvarchar(max)"], ["designation", "nchar(255)"], ["insertDate", "datetime2"], ["active", "bit"]]) },
        Audatex_TOYOTA: { rows: [{ IdAudatex: axCode, IdToyota: model, CodPais: "GEN", Descripcion: String(input.description), EPC: epc, Fabricante: manufacturer, Activo: "0", AccesoMex: null, mes: Number(epc.slice(0, 2)), ano: 2000 + Number(epc.slice(2)) }], types: types([["IdAudatex", "nchar(50)"], ["IdToyota", "nchar(50)"], ["CodPais", "nchar(20)"], ["Descripcion", "nvarchar(70)"], ["EPC", "nchar(10)"], ["Fabricante", "varchar(50)"], ["Activo", "nchar(1)"], ["AccesoMex", "nchar(1)"], ["mes", "numeric"], ["ano", "numeric"]]) },
-      Referencias: { rows: references, types: { ID: "int", IdModeloAudatex: "nchar(10)", IdModelo: "nvarchar(254)", IdSeccion: "nvarchar(254)", ...Object.fromEntries(Array.from({ length: 31 }, (_, index) => [`Dato${index + 1}`, index >= 16 ? "nvarchar(max)" : "nvarchar(254)"])), DatoFecha: "date", DatoFecha1: "date", DescripcionTotal: "nvarchar(max)" } },
+       Referencias: { rows: references, types: { IdModeloAudatex: "nchar(10)", IdModelo: "nvarchar(254)", IdSeccion: "nvarchar(254)", ...Object.fromEntries(Array.from({ length: 31 }, (_, index) => [`Dato${index + 1}`, index >= 16 ? "nvarchar(max)" : "nvarchar(254)"])), DatoFecha: "date", DatoFecha1: "date", DescripcionTotal: "nvarchar(max)" } },
     },
   };
 }
 
 if (import.meta.main) {
-  buildSandboxDataset(process.argv[2]).then(loadAccionaDataset).then((result) => { console.log(result); process.exit(0); }).catch((error) => { console.error(error.message); process.exit(1); });
+  const requestId = process.argv[2];
+  if (!requestId) throw new Error("Usage: bun src/acciona/load-model.ts <requestId>");
+  buildAccionaDataset(requestId).then((dataset) => loadAccionaDataset(dataset, { confirmProduction: process.env.ACCIONA_CONFIRM_PRODUCTION === "true" })).then((result) => { console.log(result); process.exit(0); }).catch((error) => { console.error(error.message); process.exit(1); });
 }

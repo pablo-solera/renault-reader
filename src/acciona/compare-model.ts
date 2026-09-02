@@ -1,9 +1,18 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { compareSandboxWithDatabase } from "./compare.js";
+import { getState } from "../jobs.js";
+import { getAccionaConfig, extractionDatabaseName } from "../db/acciona.js";
+import { epcFromDate } from "../parts.js";
 
-const axCode = process.argv[2] ?? "5208";
-const model = process.argv[3] ?? "X1310";
-const referenceDatabase = process.env.ACCIONA_SQL_REFERENCE_DB ?? "Extraccion_DACIA0826";
+const requestId = process.argv[2];
+if (!requestId) throw new Error("Usage: bun src/acciona/compare-model.ts <requestId> [referenceDatabase]");
+const root = await getState(requestId);
+if (!root?.modelInput) throw new Error(`Request ${requestId} has no modelInput; relaunch the model extraction`);
+const input = root.modelInput;
+const config = getAccionaConfig();
+const axCode = input.axCode;
+const model = input.family;
+const referenceDatabase = process.argv[3] ?? extractionDatabaseName(config, input.manufacturer, input.epc ?? epcFromDate(root.createdAt));
 
 compareSandboxWithDatabase(axCode, model, referenceDatabase).then(async (result) => {
   await mkdir("compare-out", { recursive: true });

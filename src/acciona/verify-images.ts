@@ -3,7 +3,8 @@ import { getAccionaConfig, openAccionaPool } from "../db/acciona.js";
 import { readFile } from "node:fs/promises";
 
 const config = getAccionaConfig();
-const model = process.argv[2] ?? "X1310";
+const model = process.argv[2];
+if (!model) throw new Error("Usage: bun src/acciona/verify-images.ts <model>");
 const pool = await openAccionaPool(config, config.targetDatabase);
 try {
   const result = await pool.request().input("model", model).query("SELECT RutaFoto FROM dbo.DesSecciones WHERE Modelo=@model");
