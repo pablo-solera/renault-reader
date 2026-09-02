@@ -6,6 +6,8 @@ import { enqueueLabour, enqueueModel, enqueueParts, getState } from "./jobs.js";
 import { PARTS_EXPORT_CODES, type LabourRequest, type ModelExtractionRequest, type PartsRequest } from "./types.js";
 import { normalizeAxCode, normalizeEdition, normalizeManufacturer } from "./parts.js";
 import { openapi } from "./openapi.js";
+import { buildSandboxDataset } from "./acciona/load-model.js";
+import { loadAccionaDataset } from "./acciona/load.js";
 
 export const app = express();
 app.disable("x-powered-by");
@@ -70,6 +72,7 @@ function parseModelInput(body: any): ModelExtractionRequest {
   if (exports != null && (typeof exports !== "object" || Object.keys(exports).some((key) => !PARTS_EXPORT_CODES.includes(key as any) || typeof exports[key] !== "boolean"))) throw new Error("exports must contain boolean Parts export codes");
   return {
     axCode: normalizeAxCode(required(body?.axCode, "axCode")),
+    epc: body?.epc ? required(body.epc, "epc") : undefined,
     edition: normalizeEdition(required(body?.edition, "edition")),
     manufacturer: normalizeManufacturer(required(body?.manufacturer, "manufacturer")),
     description: required(body?.description, "description"),
@@ -189,6 +192,19 @@ app.get("/models/:requestId/download", async (request: Request, response: Respon
   if (!state) return response.status(404).json({ error: "Model extraction not found" });
   if (state.status !== "completed" || !state.objectKey) return response.status(409).json({ error: "Model report is not ready", status: state.status });
   return response.redirect(307, await signedDownload(state.objectKey));
+});
+
+app.post("/models/:requestId/acciona", async (request: Request, response: Response) => {
+  try {
+    const requestId = String(request.params.requestId);
+    const state = await getState(requestId);
+    if (!state) return response.status(404).json({ error: "Model extraction not found" });
+    if (state.status !== "completed") return response.status(409).json({ error: "Model extraction is not ready", status: state.status });
+    const result = await loadAccionaDataset(await buildSandboxDataset(requestId));
+    return response.json({ requestId, target: "_MOK_MOK", result });
+  } catch (error) {
+    return response.status(400).json({ error: error instanceof Error ? error.message : "Acciona load failed" });
+  }
 });
 
 app.use((error: unknown, _request: Request, response: Response, _next: unknown) => response.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" }));

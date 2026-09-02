@@ -113,6 +113,13 @@ export const openapi = {
         responses: { "307": { description: "Redirección temporal a S3/MinIO" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "El informe todavía no está disponible" } },
       },
     },
+    "/models/{requestId}/acciona": {
+      post: {
+        tags: ["Models"], summary: "Carga un modelo completado en el sandbox Acciona",
+        parameters: [{ $ref: "#/components/parameters/RequestId" }],
+        responses: { "200": { description: "Carga completada" }, "400": { $ref: "#/components/responses/BadRequest" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "El modelo todavía no está listo" } },
+      },
+    },
   },
   components: {
     parameters: {
@@ -149,7 +156,7 @@ export const openapi = {
       },
       ModelExtractionRequest: {
         type: "object", required: ["axCode", "edition", "manufacturer", "description", "family", "modelIds", "range"], properties: {
-          axCode: { type: "string", example: "5208" }, edition: { type: "string", pattern: "^\\d{2}/\\d$", example: "02/0" }, manufacturer: { type: "string", example: "DACIA" }, description: { type: "string", example: "Bigster (SVA)" }, family: { type: "string", example: "X1310" }, modelIds: { type: "array", minItems: 1, items: { type: "string" } }, range: { type: "string", example: "active" }, language: { type: "string", example: "en" }, format: { type: "string", example: "zip" }, exports: { type: "object", additionalProperties: { type: "boolean" } },
+          axCode: { type: "string", example: "5208" }, epc: { type: "string", example: "0826" }, edition: { type: "string", pattern: "^\\d{2}/\\d$", example: "02/0" }, manufacturer: { type: "string", example: "DACIA" }, description: { type: "string", example: "Bigster (SVA)" }, family: { type: "string", example: "X1310" }, modelIds: { type: "array", minItems: 1, items: { type: "string" } }, range: { type: "string", example: "active" }, language: { type: "string", example: "en" }, format: { type: "string", example: "zip" }, exports: { type: "object", additionalProperties: { type: "boolean" } },
         },
       },
       LabourRequest: {

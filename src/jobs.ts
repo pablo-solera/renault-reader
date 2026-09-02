@@ -116,7 +116,7 @@ export async function enqueueParts(input: PartsRequest) {
 export async function enqueueModel(input: ModelExtractionRequest) {
   const requestId = randomUUID();
   const now = new Date().toISOString();
-  const state: JobState = { requestId, status: "queued", stage: "queued", progress: 0, createdAt: now, updatedAt: now, children: {} };
+  const state: JobState = { requestId, status: "queued", stage: "queued", progress: 0, createdAt: now, updatedAt: now, children: {}, modelInput: input };
   await redis.set(stateKey(requestId), JSON.stringify(state), "EX", config.stateTtlSeconds);
   try {
     await modelsQueue.add("extract", { requestId, input }, { jobId: requestId, removeOnComplete: true, removeOnFail: 100 });

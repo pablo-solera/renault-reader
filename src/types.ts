@@ -29,6 +29,7 @@ export type PartsRequest = {
 
 export type ModelExtractionRequest = {
   axCode: string;
+  epc?: string;
   edition: string;
   manufacturer: string;
   description: string;
@@ -63,6 +64,7 @@ export type JobState = {
   updatedAt: string;
   children?: Record<string, { requestId: string; status?: JobStatus }>;
   excelObjectKey?: string;
+  modelInput?: ModelExtractionRequest;
 };
 
 export type RenaultQuery = {
