@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { buildLabourObjectKey, buildPartsBaseKey, buildPartsObjectKey } from "../src/jobs.js";
 import { buildFileName, buildPartsFileName, getEditorFamilies, getPartnerFamilies } from "../src/renault.js";
 import { normalizeUploadContentType } from "../src/storage.js";
-import { compareCatalogRecords, compareImageHashes, compareTapv, currentEpc, normalizeAxCode, normalizeDescription, normalizeEdition, normalizeManufacturer, parsePartsArchive, preprocessCatalogRecords, preprocessModelVehicleRecords } from "../src/parts.js";
+import { compareCatalogRecords, compareImageHashes, compareTapv, currentEpc, epcFromDate, normalizeAxCode, normalizeDescription, normalizeEdition, normalizeManufacturer, parsePartsArchive, preprocessCatalogRecords, preprocessModelVehicleRecords } from "../src/parts.js";
 import { zipSync, strToU8 } from "fflate";
 import { deriveFamilies, selectPowertrain } from "../src/powertrain.js";
 import { buildCriteriaIndex } from "../src/preprocessing/criteria.js";
@@ -97,6 +97,7 @@ describe("Renault Labour helpers", () => {
     expect(models).toEqual([{ modelId: "M2", manufacturer: "UNKNOWN", manufacturerCode: "UNKNOWN" }]);
     expect(preprocessModelVehicleRecords([{ modelId: "M1", manufacturer: "APL03" }], undefined, "Dacia")[0].manufacturer).toBe("Dacia");
     expect(currentEpc(new Date(2026, 7, 31))).toBe("0826");
+    expect(epcFromDate("2026-08-31T15:21:59.678Z")).toBe("0826");
   });
 
   test("builds the Access-compatible Parts path", () => {

@@ -15,6 +15,12 @@ export function currentEpc(date = new Date()): string {
   return `${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getFullYear()).slice(-2)}`;
 }
 
+export function epcFromDate(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new Error(`Invalid extraction date: ${String(value)}`);
+  return currentEpc(date);
+}
+
 export function normalizeAxCode(value: string): string {
   return value.replaceAll(" ", "");
 }

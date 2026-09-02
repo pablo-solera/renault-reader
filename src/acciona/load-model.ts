@@ -12,7 +12,8 @@ import {
   toAccionaSustituciones,
 } from "./transform.js";
 import { loadAccionaDataset } from "./load.js";
-import { currentEpc } from "../parts.js";
+import { epcFromDate } from "../parts.js";
+import { getAccionaConfig } from "../db/acciona.js";
 
 type AnyRow = Record<string, any>;
 
@@ -39,8 +40,9 @@ export async function buildSandboxDataset(requestId = defaultRequestId) {
   const model = String(input.family);
   const axCode = String(input.axCode);
   const manufacturer = String(input.manufacturer);
-  const epc = input.epc ?? currentEpc();
-  const sections = toAccionaDesSecciones(processed, axCode, model, epc, `./sandbox-images/${manufacturer}/${epc}/${model}`);
+  const epc = input.epc ?? epcFromDate(root.createdAt);
+  const imagesRoot = getAccionaConfig().imagesRoot.replace(/[\\/]+$/, "");
+  const sections = toAccionaDesSecciones(processed, axCode, model, epc, `${imagesRoot}\\${manufacturer}\\${epc}\\${model}`);
   const references = toAccionaReferences(processed, axCode, model, pr05.records).map((row, index) => ({ ...row, ID: 14441 + index }));
   const descriptionMap = new Map(pr06.records.map((row) => [`A_${model}_${row.partNumber}`, String(row.designation ?? "")]));
   const activePartNumbers = new Set((processed as AnyRow[]).filter((record) => record.ActivePartsNumber === 1).map((record) => String(record.partNumber)));
@@ -56,7 +58,7 @@ export async function buildSandboxDataset(requestId = defaultRequestId) {
       Sustituciones: { rows: toAccionaSustituciones(processed, pr05.records, model, descriptionMap), types: types([["partNoReferencia", "nvarchar(50)"], ["Aplicabilidad", "nvarchar(max)"], ["Quantity", "numeric"], ["RefTurca", "nvarchar(50)"], ["SuspartNoReferencia", "nvarchar(254)"], ["SusPartNoReferenciaDescripcion", "nchar(255)"], ["SusAplicabilidad", "nvarchar(max)"], ["SusQuantity", "nchar(2)"], ["SusRefTurca", "nvarchar(254)"], ["Modelo", "nvarchar(10)"]]) },
       CriteriaLabels: { rows: flattenCriteriaLabels(ref02.records), types: types([["Hash", "nchar(28)"], ["HTC", "nvarchar(10)"], ["objectOriginCode", "nvarchar(10)"], ["labels", "nvarchar(10)"], ["subLabels", "nvarchar(10)"], ["lang", "nvarchar(5)"], ["description", "nvarchar(255)"], ["insertDate", "datetime2"], ["active", "bit"]]) },
       PartsData: { rows: toAccionaPartsData(pr06.records), types: types([["Hash", "nchar(28)"], ["partNumber", "nchar(20)"], ["brandCode", "nchar(2)"], ["corporate", "nchar(10)"], ["familyCode", "nchar(10)"], ["productModelCode", "nchar(10)"], ["codifiedSigns", "nchar(255)"], ["types", "nchar(50)"], ["partsEquivalentRenault", "nchar(1000)"], ["equivalentParts", "nvarchar(max)"], ["designation", "nchar(255)"], ["insertDate", "datetime2"], ["active", "bit"]]) },
-      Audatex_TOYOTA: { rows: [{ IdAudatex: "5208", IdToyota: "X1310", CodPais: "GEN", Descripcion: "Bigster (SVA)", EPC: "0826", Fabricante: "DACIA", Activo: "0", AccesoMex: null, mes: 8, ano: 2026 }], types: types([["IdAudatex", "nchar(50)"], ["IdToyota", "nchar(50)"], ["CodPais", "nchar(20)"], ["Descripcion", "nvarchar(70)"], ["EPC", "nchar(10)"], ["Fabricante", "varchar(50)"], ["Activo", "nchar(1)"], ["AccesoMex", "nchar(1)"], ["mes", "numeric"], ["ano", "numeric"]]) },
+       Audatex_TOYOTA: { rows: [{ IdAudatex: axCode, IdToyota: model, CodPais: "GEN", Descripcion: String(input.description), EPC: epc, Fabricante: manufacturer, Activo: "0", AccesoMex: null, mes: Number(epc.slice(0, 2)), ano: 2000 + Number(epc.slice(2)) }], types: types([["IdAudatex", "nchar(50)"], ["IdToyota", "nchar(50)"], ["CodPais", "nchar(20)"], ["Descripcion", "nvarchar(70)"], ["EPC", "nchar(10)"], ["Fabricante", "varchar(50)"], ["Activo", "nchar(1)"], ["AccesoMex", "nchar(1)"], ["mes", "numeric"], ["ano", "numeric"]]) },
       Referencias: { rows: references, types: { ID: "int", IdModeloAudatex: "nchar(10)", IdModelo: "nvarchar(254)", IdSeccion: "nvarchar(254)", ...Object.fromEntries(Array.from({ length: 31 }, (_, index) => [`Dato${index + 1}`, index >= 16 ? "nvarchar(max)" : "nvarchar(254)"])), DatoFecha: "date", DatoFecha1: "date", DescripcionTotal: "nvarchar(max)" } },
     },
   };
