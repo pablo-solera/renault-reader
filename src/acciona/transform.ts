@@ -80,8 +80,13 @@ function dateValue(value: unknown): Date | null {
   return new Date(Date.UTC(Number(raw.slice(0, 4)), Number(raw.slice(4, 6)) - 1, Number(raw.slice(6, 8))));
 }
 
-export function toAccionaReferences(records: AnyRow[], axCode: string, model: string): AnyRow[] {
+export function toAccionaReferences(records: AnyRow[], axCode: string, model: string, replacements: AnyRow[] = []): AnyRow[] {
+  const replacementByPart = new Map<string, AnyRow>();
+  for (const replacement of replacements) replacementByPart.set(String(replacement.partNumberReplaced), replacement);
   return records.filter((record) => record.ActivePartsNumber === 1).flatMap((record) => {
+    const replacement = replacementByPart.get(String(record.partNumber));
+    const targets = Array.isArray(replacement?.target) ? replacement.target : [];
+    const replacementPart = record.latestReplacementPart ?? (targets.length > 1 ? "Multi." : targets[0]?.partNumber ?? "");
     const applicability = String(record.partsApplicabilityCleaned ?? "").split(/\r?\n/).filter(Boolean);
     return applicability.map((line) => {
       const [, , plant, start, end] = line.split("|");
@@ -92,17 +97,17 @@ export function toAccionaReferences(records: AnyRow[], axCode: string, model: st
         Dato1: record.hotSpotNumber,
         Dato2: record.genericPart,
         Dato3: record.partNumber,
-        Dato5: record.latestReplacementPart ?? "",
+         Dato5: replacementPart,
         Dato6: `A_${model}_${record.partNumber ?? ""}`,
         Dato8: start ? `${start.slice(6, 8)}/${start.slice(4, 6)}/${start.slice(0, 4)}` : "",
         Dato9: end ? `${end.slice(6, 8)}/${end.slice(4, 6)}/${end.slice(0, 4)}` : "",
         Dato12: record.plateId,
-        Dato17: [listText(record.partCodifiedSigns).join("\r\n"), line.split("|")[0], plant].filter(Boolean).join("\r\n\r\n"),
+         Dato17: [listText(record.partCodifiedSigns).join("\r\n"), line.split("|")[0]].filter(Boolean).join("\r\n\r\n") + (plant ? `\r\n${plant}` : ""),
         Dato18: record.partKitFlag === "Y" && record.sourcing === "EXTERNAL" ? partNumbers(record.partKitList).map((part) => `A_${model}_${part}`).join(",") : "",
         Dato19: partNumbers(record.additionalParts).map((part) => `A_${model}_${part}`).join("\r\n"),
         DatoFecha: dateValue(start),
         DatoFecha1: dateValue(end),
-        DescripcionTotal: line.split("|")[0] ?? "",
+         DescripcionTotal: [listText(record.partCodifiedSigns).join("\r\n"), line.split("|")[0]].filter(Boolean).join("\r\n\r\n") + (plant ? `\r\n${plant}` : ""),
       };
     });
   });
@@ -142,7 +147,7 @@ export function toAccionaFiltroSecciones(sections: AnyRow[], model: string): Any
 
 export function toAccionaDescriptions(records: AnyRow[], manufacturer: string, model = ""): AnyRow[] {
   const seen = new Set<string>();
-  return records.filter((record) => record.ActivePartsNumber === 1 && record.partNumber && !seen.has(String(record.partNumber)) && seen.add(String(record.partNumber))).map((record) => ({ Fabricante: manufacturer, Num: `A_${model ? `${model}_` : ""}${record.partNumber}`, Idioma: 3, Descripcion: record.designationEN ?? record.genericPartDesignationEN ?? "" }));
+  return records.filter((record) => (record.ActivePartsNumber === 1 || record.ActivePartsNumber == null) && record.partNumber && !seen.has(String(record.partNumber)) && seen.add(String(record.partNumber))).map((record) => ({ Fabricante: manufacturer, Num: `A_${model ? `${model}_` : ""}${record.partNumber}`, Idioma: 3, Descripcion: record.designationEN ?? record.genericPartDesignationEN ?? record.designation ?? "" }));
 }
 
 export function toAccionaSustituciones(records: AnyRow[], replacements: AnyRow[], model: string, descriptions: Map<string, string>): AnyRow[] {

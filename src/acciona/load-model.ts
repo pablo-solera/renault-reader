@@ -14,6 +14,8 @@ import {
 import { loadAccionaDataset } from "./load.js";
 import { currentEpc } from "../parts.js";
 
+type AnyRow = Record<string, any>;
+
 const defaultRequestId = "4aa5bf62-acfc-4571-8938-9454dfaaf2ed";
 const read = async (id: string) => {
   const state = await getState(id);
@@ -39,14 +41,18 @@ export async function buildSandboxDataset(requestId = defaultRequestId) {
   const manufacturer = String(input.manufacturer);
   const epc = input.epc ?? currentEpc();
   const sections = toAccionaDesSecciones(processed, axCode, model, epc, `./sandbox-images/${manufacturer}/${epc}/${model}`);
-  const references = toAccionaReferences(processed, axCode, model).map((row, index) => ({ ...row, ID: 14441 + index }));
+  const references = toAccionaReferences(processed, axCode, model, pr05.records).map((row, index) => ({ ...row, ID: 14441 + index }));
   const descriptionMap = new Map(pr06.records.map((row) => [`A_${model}_${row.partNumber}`, String(row.designation ?? "")]));
+  const activePartNumbers = new Set((processed as AnyRow[]).filter((record) => record.ActivePartsNumber === 1).map((record) => String(record.partNumber)));
+  const replacementPartNumbers = new Set(pr05.records.filter((replacement) => activePartNumbers.has(String(replacement.partNumberReplaced))).flatMap((replacement) => (Array.isArray(replacement.target) ? replacement.target : []).map((target: AnyRow) => String(target.partNumber))));
+  const replacementDescriptions = [...replacementPartNumbers].filter((partNumber) => !pr06.records.some((record) => String(record.partNumber) === partNumber)).map((partNumber) => ({ partNumber, designation: "" }));
+  const descriptionSources = [...processed, ...pr06.records.filter((record) => replacementPartNumbers.has(String(record.partNumber))), ...replacementDescriptions];
   return {
     axCode, model,
     tables: {
       DesSecciones: { rows: sections, types: types([["CD", "nchar(10)"], ["idAudatex", "nchar(4)"], ["Modelo", "nvarchar(50)"], ["Seccion", "nchar(50)"], ["Descripcion", "nvarchar(max)"], ["Realizada", "nchar(1)"], ["Audatex", "nchar(50)"], ["DesOriginal", "nvarchar(max)"], ["DesSeccion", "nvarchar(max)"], ["DesSeccion1", "nvarchar(max)"], ["Filtrado", "nvarchar(max)"], ["SeccionOriginal", "nchar(50)"], ["RutaFoto", "nvarchar(max)"], ["ColorFondo", "nchar(12)"], ["Estado", "nchar(1)"]]) },
       filtrosecciones: { rows: toAccionaFiltroSecciones(sections, model), types: types([["Modelo", "nvarchar(50)"], ["Seccion", "nvarchar(max)"], ["Ordinal", "int"]]) },
-      Descripciones: { rows: toAccionaDescriptions(processed, manufacturer, model), types: types([["Fabricante", "nvarchar(50)"], ["Num", "nvarchar(50)"], ["Idioma", "numeric"], ["Descripcion", "nvarchar(max)"]]) },
+       Descripciones: { rows: toAccionaDescriptions(descriptionSources, manufacturer, model), types: types([["Fabricante", "nvarchar(50)"], ["Num", "nvarchar(50)"], ["Idioma", "numeric"], ["Descripcion", "nvarchar(max)"]]) },
       Sustituciones: { rows: toAccionaSustituciones(processed, pr05.records, model, descriptionMap), types: types([["partNoReferencia", "nvarchar(50)"], ["Aplicabilidad", "nvarchar(max)"], ["Quantity", "numeric"], ["RefTurca", "nvarchar(50)"], ["SuspartNoReferencia", "nvarchar(254)"], ["SusPartNoReferenciaDescripcion", "nchar(255)"], ["SusAplicabilidad", "nvarchar(max)"], ["SusQuantity", "nchar(2)"], ["SusRefTurca", "nvarchar(254)"], ["Modelo", "nvarchar(10)"]]) },
       CriteriaLabels: { rows: flattenCriteriaLabels(ref02.records), types: types([["Hash", "nchar(28)"], ["HTC", "nvarchar(10)"], ["objectOriginCode", "nvarchar(10)"], ["labels", "nvarchar(10)"], ["subLabels", "nvarchar(10)"], ["lang", "nvarchar(5)"], ["description", "nvarchar(255)"], ["insertDate", "datetime2"], ["active", "bit"]]) },
       PartsData: { rows: toAccionaPartsData(pr06.records), types: types([["Hash", "nchar(28)"], ["partNumber", "nchar(20)"], ["brandCode", "nchar(2)"], ["corporate", "nchar(10)"], ["familyCode", "nchar(10)"], ["productModelCode", "nchar(10)"], ["codifiedSigns", "nchar(255)"], ["types", "nchar(50)"], ["partsEquivalentRenault", "nchar(1000)"], ["equivalentParts", "nvarchar(max)"], ["designation", "nchar(255)"], ["insertDate", "datetime2"], ["active", "bit"]]) },

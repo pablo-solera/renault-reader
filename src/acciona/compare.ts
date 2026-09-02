@@ -6,18 +6,30 @@ export type ComparableReference = Record<string, unknown>;
 export type ReferenceComparison = { added: ComparableReference[]; deleted: ComparableReference[]; changed: Array<{ key: string; before: ComparableReference; after: ComparableReference }> };
 
 const keyOf = (row: ComparableReference) => [row.Dato12, row.Dato1, row.Dato8, row.Dato9].map((value) => String(value ?? "").trim()).join("|");
-const fingerprint = (row: ComparableReference) => createHash("sha1").update(JSON.stringify(row)).digest("hex");
+const fingerprint = (row: ComparableReference) => createHash("sha1").update(JSON.stringify(Object.fromEntries(Object.entries(row).filter(([key]) => !["DatoFecha", "DatoFecha1"].includes(key)))).replace(/\s+$/gm, "")).digest("hex");
+const groupBy = <T>(rows: T[], key: (row: T) => string) => rows.reduce((groups, row) => groups.set(key(row), [...(groups.get(key(row)) ?? []), row]), new Map<string, T[]>());
 
 export function compareReferences(current: ComparableReference[], previous: ComparableReference[]): ReferenceComparison {
-  const currentByKey = new Map(current.map((row) => [keyOf(row), row]));
-  const previousByKey = new Map(previous.map((row) => [keyOf(row), row]));
-  const added = current.filter((row) => !previousByKey.has(keyOf(row)));
-  const deleted = previous.filter((row) => !currentByKey.has(keyOf(row)));
-  const changed = current.flatMap((row) => {
-    const key = keyOf(row);
-    const before = previousByKey.get(key);
-    return before && fingerprint(before) !== fingerprint(row) ? [{ key, before, after: row }] : [];
-  });
+  const currentByKey = groupBy(current, keyOf);
+  const previousByKey = groupBy(previous, keyOf);
+  const added: ComparableReference[] = [];
+  const deleted: ComparableReference[] = [];
+  const changed: ReferenceComparison["changed"] = [];
+  for (const key of new Set([...currentByKey.keys(), ...previousByKey.keys()])) {
+    const now = [...(currentByKey.get(key) ?? [])];
+    const old = [...(previousByKey.get(key) ?? [])];
+    for (const row of now) {
+      const hash = fingerprint(row);
+      const matchingIndex = old.findIndex((candidate) => fingerprint(candidate) === hash);
+      if (matchingIndex >= 0) old.splice(matchingIndex, 1);
+      else {
+        const before = old.shift();
+        if (before) changed.push({ key, before, after: row });
+        else added.push(row);
+      }
+    }
+    deleted.push(...old);
+  }
   return { added, deleted, changed };
 }
 
