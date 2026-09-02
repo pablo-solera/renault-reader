@@ -12,6 +12,7 @@ import { createCatalogHash } from "../src/preprocessing/hash.js";
 import { getAccionaConfig, extractionDatabaseName } from "../src/db/acciona.js";
 import { assertSandboxDatabase, ACCIONA_TABLES } from "../src/acciona/writers.js";
 import { flattenPartsCatalog, flattenRepairTree, toAccionaPartsData, toAccionaReferences } from "../src/acciona/transform.js";
+import { compareReferences } from "../src/acciona/compare.js";
 
 describe("Renault Labour helpers", () => {
   test("filters and sorts authorized partner families", () => {
@@ -173,5 +174,14 @@ describe("Renault Labour helpers", () => {
 
   test("maps PR06 rows to PartsData without losing the source fields", () => {
     expect(toAccionaPartsData([{ partNumber: "P", brandCode: "01", designation: "Part" }])[0]).toMatchObject({ partNumber: "P", brandCode: "01", designation: "Part", active: true });
+  });
+
+  test("compares references approximately by stable applicability key", () => {
+    const before = [{ Dato12: "P", Dato1: "1", Dato3: "OLD", Dato8: "01", Dato9: "02", Dato17: "a" }];
+    const after = [{ ...before[0], Dato3: "NEW" }, { Dato12: "P", Dato1: "2", Dato3: "ADD", Dato8: "01", Dato9: "02" }];
+    const result = compareReferences(after, before);
+    expect(result.changed).toHaveLength(1);
+    expect(result.added).toHaveLength(1);
+    expect(result.deleted).toHaveLength(0);
   });
 });

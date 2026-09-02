@@ -9,6 +9,7 @@
     "worker": "bun src/worker.ts",
     "acciona:load": "bun src/acciona/load-model.ts",
     "acciona:images": "bun src/acciona/publish-images.ts",
+    "acciona:compare": "bun src/acciona/compare-model.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
