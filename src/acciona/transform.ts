@@ -114,11 +114,21 @@ export function toAccionaReferences(records: AnyRow[], axCode: string, model: st
 }
 
 export function toAccionaComparisonReferences(records: AnyRow[], axCode: string, model: string, replacements: AnyRow[] = [], comparisonType = ""): AnyRow[] {
-  return toAccionaReferences(records, axCode, model, replacements).map((row) => ({ ...row, Dato22: "", Dato23: comparisonType || String(records.find((record) => String(record.plateId) === String(row.Dato12) && String(record.hotSpotNumber) === String(row.Dato1) && String(record.partNumber) === String(row.Dato3))?.TypeCompare ?? "") }));
+  return toAccionaReferences(records, axCode, model, replacements).map((row) => {
+    const source = records.find((record) => String(record.plateId) === String(row.Dato12) && String(record.hotSpotNumber) === String(row.Dato1) && String(record.partNumber) === String(row.Dato3));
+    const type = comparisonType || String(source?.TypeCompare ?? "");
+    return { ...row, Dato6: type === "PartsDescription" ? `B_${model}_${row.Dato3}` : row.Dato6, Dato22: String(source?.Dato22 ?? ""), Dato23: type };
+  });
 }
 
 export function toAccionaComparisonSections(records: AnyRow[], axCode: string, model: string, epc: string, imagesRoot: string, performedFlag = "0"): AnyRow[] {
-  return toAccionaDesSecciones(records, axCode, model, epc, imagesRoot, performedFlag).map((row) => ({ ...row, Estado: records.find((record) => String(record.plateId) === String(row.Audatex))?.TypeCompare === "NewSection" ? 1 : 2 }));
+  const state = (type: string) => type === "NewSection" ? 1 : type === "DeletedSection" ? 3 : type === "SectionApplicability" ? 4 : 2;
+  const bySection = new Map<string, AnyRow>();
+  for (const record of records) {
+    const id = String(record.plateId ?? "");
+    if (!bySection.has(id) || state(String(record.TypeCompare ?? "")) > state(String(bySection.get(id)?.TypeCompare ?? ""))) bySection.set(id, record);
+  }
+  return toAccionaDesSecciones([...bySection.values()], axCode, model, epc, imagesRoot, performedFlag).map((row) => ({ ...row, Estado: state(String(bySection.get(String(row.Audatex))?.TypeCompare ?? "")) }));
 }
 
 export function toAccionaDesSecciones(records: AnyRow[], axCode: string, model: string, epc: string, imagesRoot: string, performedFlag = "0"): AnyRow[] {

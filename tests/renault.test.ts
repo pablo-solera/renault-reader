@@ -198,9 +198,11 @@ describe("Renault Labour helpers", () => {
 
   test("classifies Access comparison changes by priority", () => {
     const previous = { id: 1, plateId: "P_1", hotSpotNumber: "1", partNumber: "OLD", ActiveSection: 1, ActivePartsNumber: 1, Hash: "old", partsApplicabilityCleanedComparison: "A", partCodifiedSigns: "", latestReplacementPart: "", sectionApplicabilityCleanedComparison: "S", designationEN: "old", additionalParts: "", sourcing: "Internal", partKitList: "" };
-    const current = { ...previous, id: 2, partNumber: "NEW", Hash: "new" };
+    const current = { ...previous, id: 2, hotSpotNumber: "2", partNumber: "NEW", Hash: "new" };
     const result = compareCatalogs([current], [previous]);
     expect(result.current[0].TypeCompare).toBe("PartNumberCode");
+    const noCode = compareCatalogs([{ ...current, hotSpotNumber: "1" }], [previous]);
+    expect(noCode.current[0].TypeCompare).toBe("NewPartNumber");
   });
 
   test("classifies new and deleted sections separately", () => {
