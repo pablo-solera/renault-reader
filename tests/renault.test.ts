@@ -11,7 +11,7 @@ import { buildTreeIndex, navigationPath } from "../src/preprocessing/tree.js";
 import { createCatalogHash } from "../src/preprocessing/hash.js";
 import { getAccionaConfig, extractionDatabaseName } from "../src/db/acciona.js";
 import { assertAllowedDatabase, ACCIONA_TABLES } from "../src/acciona/writers.js";
-import { flattenPartsCatalog, flattenRepairTree, toAccionaPartsData, toAccionaReferences } from "../src/acciona/transform.js";
+import { cleanAccionaComparisonReferences, cleanAccionaComparisonSections, flattenPartsCatalog, flattenRepairTree, toAccionaComparisonSections, toAccionaPartsData, toAccionaReferences } from "../src/acciona/transform.js";
 import { compareReferences } from "../src/acciona/compare.js";
 import { compareCatalogs } from "../src/preprocessing/compare-catalog.js";
 
@@ -210,5 +210,14 @@ describe("Renault Labour helpers", () => {
     const result = compareCatalogs([row("NEW")], [row("OLD")]);
     expect(result.current[0].TypeCompare).toBe("NewSection");
     expect(result.previous[0].TypeCompare).toBe("DeletedSection");
+  });
+
+  test("preserves Access comparison section states and cleanup behavior", () => {
+    const records = [{ plateId: "P_1", illustrationFile: "one.svg", sectionApplicabilityCleaned: "A", navigation_path: "N", ActiveSection: 1, ActivePartsNumber: 1, TypeCompare: "NewSection" }, { plateId: "P_2", illustrationFile: "two.svg", sectionApplicabilityCleaned: "B", navigation_path: "N", ActiveSection: 1, ActivePartsNumber: 1, TypeCompare: "DeletedSection" }];
+    const sections = toAccionaComparisonSections(records, "AX", "M", "0926", "\\images");
+    expect(sections.map((row) => row.Estado)).toEqual([1, 3]);
+    const refs = [{ Dato12: "P_1", Dato22: "" }];
+    expect(cleanAccionaComparisonSections(sections, refs)).toHaveLength(1);
+    expect(cleanAccionaComparisonReferences([{ Dato23: "PartsApplicability", Dato12: "P_1", Dato1: "1", Dato3: "P", Dato8: "", Dato9: "", Dato17: "" }], [{ IdModeloAudatex: "", IdModelo: "", Dato12: "P_1", Dato1: "1", Dato3: "P", Dato8: "", Dato9: "", Dato17: "" }])).toHaveLength(0);
   });
 });

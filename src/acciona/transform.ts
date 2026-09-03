@@ -121,14 +121,34 @@ export function toAccionaComparisonReferences(records: AnyRow[], axCode: string,
   });
 }
 
+export function cleanAccionaComparisonReferences(rows: AnyRow[], currentRows: AnyRow[]): AnyRow[] {
+  return rows.filter((row) => {
+    if (row.Dato23 !== "PartsApplicability") return true;
+    const same = currentRows.some((current) => String(current.IdModeloAudatex ?? "").trim() === String(row.IdModeloAudatex ?? "").trim()
+      && String(current.IdModelo ?? "").trim() === String(row.IdModelo ?? "").trim()
+      && String(current.Dato12 ?? "").trim() === String(row.Dato12 ?? "").trim()
+      && String(current.Dato1 ?? "").trim() === String(row.Dato1 ?? "").trim()
+      && String(current.Dato3 ?? "").trim() === String(row.Dato3 ?? "").trim()
+      && String(current.Dato8 ?? "").trim() === String(row.Dato8 ?? "").trim()
+      && String(current.Dato9 ?? "").trim() === String(row.Dato9 ?? "").trim()
+      && String(current.Dato17 ?? "").trim() === String(row.Dato17 ?? "").trim());
+    if (same) row.Dato22 = "Delete";
+    return row.Dato22 !== "Delete";
+  });
+}
+
 export function toAccionaComparisonSections(records: AnyRow[], axCode: string, model: string, epc: string, imagesRoot: string, performedFlag = "0"): AnyRow[] {
   const state = (type: string) => type === "NewSection" ? 1 : type === "DeletedSection" ? 3 : type === "SectionApplicability" ? 4 : 2;
   const bySection = new Map<string, AnyRow>();
   for (const record of records) {
-    const id = String(record.plateId ?? "");
-    if (!bySection.has(id) || state(String(record.TypeCompare ?? "")) > state(String(bySection.get(id)?.TypeCompare ?? ""))) bySection.set(id, record);
+    const id = `${String(record.plateId ?? "")}|${String(record.TypeCompare ?? "")}`;
+    if (!bySection.has(id)) bySection.set(id, record);
   }
-  return toAccionaDesSecciones([...bySection.values()], axCode, model, epc, imagesRoot, performedFlag).map((row) => ({ ...row, Estado: state(String(bySection.get(String(row.Audatex))?.TypeCompare ?? "")) }));
+  return [...bySection.values()].flatMap((record) => toAccionaDesSecciones([record], axCode, model, epc, imagesRoot, performedFlag).map((row) => ({ ...row, Estado: state(String(record.TypeCompare ?? "")) })));
+}
+
+export function cleanAccionaComparisonSections(rows: AnyRow[], comparisonReferences: AnyRow[]): AnyRow[] {
+  return rows.filter((row) => comparisonReferences.some((reference) => String(reference.Dato12 ?? "").trim() === String(row.Audatex ?? "").trim() && String(reference.Dato22 ?? "") !== "Delete"));
 }
 
 export function toAccionaDesSecciones(records: AnyRow[], axCode: string, model: string, epc: string, imagesRoot: string, performedFlag = "0"): AnyRow[] {

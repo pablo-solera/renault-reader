@@ -11,6 +11,8 @@ import {
   toAccionaReferences,
   toAccionaComparisonReferences,
   toAccionaComparisonSections,
+  cleanAccionaComparisonReferences,
+  cleanAccionaComparisonSections,
   toAccionaSustituciones,
 } from "./transform.js";
 import { loadAccionaDataset } from "./load.js";
@@ -71,11 +73,13 @@ export async function buildAccionaDataset(requestId: string) {
       PartsData: { rows: toAccionaPartsData(pr06.records), types: types([["Hash", "nchar(28)"], ["partNumber", "nchar(20)"], ["brandCode", "nchar(2)"], ["corporate", "nchar(10)"], ["familyCode", "nchar(10)"], ["productModelCode", "nchar(10)"], ["codifiedSigns", "nchar(255)"], ["types", "nchar(50)"], ["partsEquivalentRenault", "nchar(1000)"], ["equivalentParts", "nvarchar(max)"], ["designation", "nchar(255)"], ["insertDate", "datetime2"], ["active", "bit"]]) },
        Audatex_TOYOTA: { rows: [{ IdAudatex: axCode, IdToyota: model, CodPais: accionaConfig.countryCode, Descripcion: String(input.description), EPC: epc, Fabricante: manufacturer, Activo: accionaConfig.activeFlag, AccesoMex: null, mes: Number(epc.slice(0, 2)), ano: 2000 + Number(epc.slice(2)) }], types: types([["IdAudatex", "nchar(50)"], ["IdToyota", "nchar(50)"], ["CodPais", "nchar(20)"], ["Descripcion", "nvarchar(70)"], ["EPC", "nchar(10)"], ["Fabricante", "varchar(50)"], ["Activo", "nchar(1)"], ["AccesoMex", "nchar(1)"], ["mes", "numeric"], ["ano", "numeric"]]) },
       Referencias: { rows: references, types: { IdModeloAudatex: "nchar(10)", IdModelo: "nvarchar(254)", IdSeccion: "nvarchar(254)", ...Object.fromEntries(Array.from({ length: 31 }, (_, index) => [`Dato${index + 1}`, index >= 16 ? "nvarchar(max)" : "nvarchar(254)"])), DatoFecha: "date", DatoFecha1: "date", DescripcionTotal: "nvarchar(max)" } },
-      ...(previousComparison ? { ComparaPrevioReferencias: { rows: [...toAccionaComparisonReferences(previousComparison.deletedRows, axCode, model, pr05.records), ...toAccionaComparisonReferences(previousComparison.newRows, axCode, model, pr05.records)], types: referenceTypes }, ComparaPrevioDesSecciones: { rows: toAccionaComparisonSections([...previousComparison.previous.filter((row) => row.TypeCompare), ...previousComparison.current.filter((row) => row.TypeCompare)], axCode, model, epc, `${imagesRoot}\\${manufacturer}\\${epc}\\${model}`, accionaConfig.performedFlag), types: sectionTypes } } : {}),
-      ...(referenceComparison ? { ComparaReferencias: { rows: [...toAccionaComparisonReferences(referenceComparison.deletedRows, axCode, model, pr05.records), ...toAccionaComparisonReferences(referenceComparison.newRows, axCode, model, pr05.records)], types: referenceTypes }, ComparaDesSecciones: { rows: toAccionaComparisonSections([...referenceComparison.previous.filter((row) => row.TypeCompare), ...referenceComparison.current.filter((row) => row.TypeCompare)], axCode, model, epc, `${imagesRoot}\\${manufacturer}\\${epc}\\${model}`, accionaConfig.performedFlag), types: sectionTypes } } : {}),
+      ...(previousComparison ? (() => { const rows = cleanAccionaComparisonReferences([...toAccionaComparisonReferences(previousComparison.previous.filter((row) => activeComparisonRow(row)), axCode, model, pr05.records), ...toAccionaComparisonReferences(previousComparison.current.filter((row) => row.Compare === 0 && row.TypeCompare), axCode, model, pr05.records)], references); return { ComparaPrevioReferencias: { rows, types: referenceTypes }, ComparaPrevioDesSecciones: { rows: cleanAccionaComparisonSections(toAccionaComparisonSections([...previousComparison.previous.filter((row) => row.TypeCompare), ...previousComparison.current.filter((row) => row.TypeCompare)], axCode, model, epc, `${imagesRoot}\\${manufacturer}\\${epc}\\${model}`, accionaConfig.performedFlag), rows), types: sectionTypes } }; })() : {}),
+      ...(referenceComparison ? (() => { const rows = cleanAccionaComparisonReferences([...toAccionaComparisonReferences(referenceComparison.previous.filter((row) => activeComparisonRow(row)), axCode, model, pr05.records), ...toAccionaComparisonReferences(referenceComparison.current.filter((row) => row.Compare === 0 && row.TypeCompare), axCode, model, pr05.records)], references); return { ComparaReferencias: { rows, types: referenceTypes }, ComparaDesSecciones: { rows: cleanAccionaComparisonSections(toAccionaComparisonSections([...referenceComparison.previous.filter((row) => row.TypeCompare), ...referenceComparison.current.filter((row) => row.TypeCompare)], axCode, model, epc, `${imagesRoot}\\${manufacturer}\\${epc}\\${model}`, accionaConfig.performedFlag), rows), types: sectionTypes } }; })() : {}),
     },
   };
 }
+
+const activeComparisonRow = (row: AnyRow) => row.Compare !== 1 && row.TypeCompare;
 
 async function buildComparisonCatalog(requestId: string): Promise<{ records: Record<string, unknown>[]; images: ImageHashes }> {
   const root = await getState(requestId);
