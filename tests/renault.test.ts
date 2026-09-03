@@ -13,6 +13,7 @@ import { getAccionaConfig, extractionDatabaseName } from "../src/db/acciona.js";
 import { assertAllowedDatabase, ACCIONA_TABLES } from "../src/acciona/writers.js";
 import { flattenPartsCatalog, flattenRepairTree, toAccionaPartsData, toAccionaReferences } from "../src/acciona/transform.js";
 import { compareReferences } from "../src/acciona/compare.js";
+import { compareCatalogs } from "../src/preprocessing/compare-catalog.js";
 
 describe("Renault Labour helpers", () => {
   test("filters and sorts authorized partner families", () => {
@@ -154,6 +155,7 @@ describe("Renault Labour helpers", () => {
     expect(() => assertAllowedDatabase("_MOK_MOK", ["_MOK_MOK"])).not.toThrow();
     expect(() => assertAllowedDatabase("Extraccion_DACIA0826", ["_MOK_MOK"])).toThrow();
     expect(() => assertAllowedDatabase("Extraccion_DACIA0826", ["Extraccion_DACIA0826"])).toThrow("explicit confirmation");
+    expect(() => assertAllowedDatabase("Extraccion_DACIA0826", ["Extraccion_DACIA0826"], false, true)).not.toThrow();
     expect(ACCIONA_TABLES.referencias).toBe("Referencias");
   });
 
@@ -185,5 +187,26 @@ describe("Renault Labour helpers", () => {
     expect(result.changed).toHaveLength(1);
     expect(result.added).toHaveLength(1);
     expect(result.deleted).toHaveLength(0);
+  });
+
+  test("matches unchanged catalog rows by hash", () => {
+    const row = { id: 1, plateId: "P_1", hotSpotNumber: "1", partNumber: "A", ActiveSection: 1, ActivePartsNumber: 1, Hash: "same" };
+    const result = compareCatalogs([row], [{ ...row, id: 2 }]);
+    expect(result.newRows).toHaveLength(0);
+    expect(result.deletedRows).toHaveLength(0);
+  });
+
+  test("classifies Access comparison changes by priority", () => {
+    const previous = { id: 1, plateId: "P_1", hotSpotNumber: "1", partNumber: "OLD", ActiveSection: 1, ActivePartsNumber: 1, Hash: "old", partsApplicabilityCleanedComparison: "A", partCodifiedSigns: "", latestReplacementPart: "", sectionApplicabilityCleanedComparison: "S", designationEN: "old", additionalParts: "", sourcing: "Internal", partKitList: "" };
+    const current = { ...previous, id: 2, partNumber: "NEW", Hash: "new" };
+    const result = compareCatalogs([current], [previous]);
+    expect(result.current[0].TypeCompare).toBe("PartNumberCode");
+  });
+
+  test("classifies new and deleted sections separately", () => {
+    const row = (plateId: string) => ({ plateId, hotSpotNumber: "1", partNumber: plateId, ActiveSection: 1, ActivePartsNumber: 1, Hash: plateId });
+    const result = compareCatalogs([row("NEW")], [row("OLD")]);
+    expect(result.current[0].TypeCompare).toBe("NewSection");
+    expect(result.previous[0].TypeCompare).toBe("DeletedSection");
   });
 });

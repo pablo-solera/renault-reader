@@ -83,6 +83,8 @@ function parseModelInput(body: any): ModelExtractionRequest {
     format: body?.format ? required(body.format, "format") : undefined,
     exports,
     resumeRequestId: body?.resumeRequestId ? required(body.resumeRequestId, "resumeRequestId") : undefined,
+    previousRequestId: body?.previousRequestId ? required(body.previousRequestId, "previousRequestId") : undefined,
+    referenceRequestId: body?.referenceRequestId ? required(body.referenceRequestId, "referenceRequestId") : undefined,
   };
 }
 

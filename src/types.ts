@@ -40,6 +40,8 @@ export type ModelExtractionRequest = {
   format?: string;
   exports?: Partial<Record<PartsExportCode, boolean>>;
   resumeRequestId?: string;
+  previousRequestId?: string;
+  referenceRequestId?: string;
 };
 
 export type JobStatus = "queued" | "authenticating" | "discovering" | "validating" | "checking_remote" | "submitted" | "waiting" | "downloading" | "uploading" | "completed" | "failed";

@@ -158,7 +158,7 @@ export const openapi = {
       },
       ModelExtractionRequest: {
         type: "object", required: ["axCode", "edition", "manufacturer", "description", "family", "modelIds", "range"], properties: {
-          axCode: { type: "string", example: "5208" }, epc: { type: "string", example: "0826" }, edition: { type: "string", pattern: "^\\d{2}/\\d$", example: "02/0" }, manufacturer: { type: "string", example: "DACIA" }, description: { type: "string", example: "Bigster (SVA)" }, family: { type: "string", example: "X1310" }, modelIds: { type: "array", minItems: 1, items: { type: "string" } }, range: { type: "string", example: "active" }, language: { type: "string", example: "en" }, format: { type: "string", example: "zip" }, exports: { type: "object", additionalProperties: { type: "boolean" } },
+          axCode: { type: "string", example: "5208" }, epc: { type: "string", example: "0826" }, edition: { type: "string", pattern: "^\\d{2}/\\d$", example: "02/0" }, manufacturer: { type: "string", example: "DACIA" }, description: { type: "string", example: "Bigster (SVA)" }, family: { type: "string", example: "X1310" }, modelIds: { type: "array", minItems: 1, items: { type: "string" } }, range: { type: "string", example: "active" }, language: { type: "string", example: "en" }, format: { type: "string", example: "zip" }, exports: { type: "object", additionalProperties: { type: "boolean" } }, previousRequestId: { type: "string", format: "uuid" }, referenceRequestId: { type: "string", format: "uuid" },
         },
       },
       LabourRequest: {

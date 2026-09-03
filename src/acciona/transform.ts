@@ -113,6 +113,14 @@ export function toAccionaReferences(records: AnyRow[], axCode: string, model: st
   });
 }
 
+export function toAccionaComparisonReferences(records: AnyRow[], axCode: string, model: string, replacements: AnyRow[] = [], comparisonType = ""): AnyRow[] {
+  return toAccionaReferences(records, axCode, model, replacements).map((row) => ({ ...row, Dato22: "", Dato23: comparisonType || String(records.find((record) => String(record.plateId) === String(row.Dato12) && String(record.hotSpotNumber) === String(row.Dato1) && String(record.partNumber) === String(row.Dato3))?.TypeCompare ?? "") }));
+}
+
+export function toAccionaComparisonSections(records: AnyRow[], axCode: string, model: string, epc: string, imagesRoot: string, performedFlag = "0"): AnyRow[] {
+  return toAccionaDesSecciones(records, axCode, model, epc, imagesRoot, performedFlag).map((row) => ({ ...row, Estado: records.find((record) => String(record.plateId) === String(row.Audatex))?.TypeCompare === "NewSection" ? 1 : 2 }));
+}
+
 export function toAccionaDesSecciones(records: AnyRow[], axCode: string, model: string, epc: string, imagesRoot: string, performedFlag = "0"): AnyRow[] {
   const seen = new Set<string>();
   return records.filter((record) => record.ActiveSection === 1 && !seen.has(String(record.plateId)) && seen.add(String(record.plateId))).map((record) => {

@@ -4,7 +4,8 @@ import { config, getRenaultCredentials } from "./config.js";
 import { redis } from "./redis.js";
 import { buildExportPayload, buildFileName, buildPartsFileName, buildLabourPayload, discoverExportOptions, discoverLabourOptions, gigyaLogin, RenaultClient } from "./renault.js";
 import { S3UploadError, downloadBytes, uploadBytes, uploadObject } from "./storage.js";
-import { buildReportZip, buildTapvWorkbook, compareCatalogRecords, compareImageHashes, currentEpc, normalizeAxCode, normalizeDescription, normalizeEdition, normalizeManufacturer, parsePartsArchive, preprocessCatalogRecords, preprocessModelVehicleRecords, structuredBytes } from "./parts.js";
+import { buildReportZip, buildTapvWorkbook, compareImageHashes, currentEpc, epcFromDate, normalizeAxCode, normalizeDescription, normalizeEdition, normalizeManufacturer, parsePartsArchive, preprocessCatalogRecords, preprocessModelVehicleRecords, structuredBytes } from "./parts.js";
+import { compareCatalogs } from "./preprocessing/compare-catalog.js";
 import type { JobState, LabourRequest, PartsRequest } from "./types.js";
 import type { ModelExtractionRequest } from "./types.js";
 import { deriveFamilies, selectPowertrain } from "./powertrain.js";
@@ -262,12 +263,12 @@ async function processParts(job: Job<{ requestId: string; input: PartsRequest }>
     const previousParsed = JSON.parse(new TextDecoder().decode(await downloadBytes(previousKey)));
     imageComparison = compareImageHashes(parsed, previousParsed);
   }
-  let catalogComparison: ReturnType<typeof compareCatalogRecords> | undefined;
+  let catalogComparison: ReturnType<typeof compareCatalogs> | undefined;
   if (input.exportType === "PR08" && input.previousRequestId) {
     const previousState = await getState(input.previousRequestId);
     const previousKey = previousState?.structuredKey ?? buildPartsDerivedKey(input.previousRequestId, "PR08", "structured", baseKey);
     const previousParsed = JSON.parse(new TextDecoder().decode(await downloadBytes(previousKey)));
-    catalogComparison = compareCatalogRecords(parsed.records, Array.isArray(previousParsed.records) ? previousParsed.records : []);
+    catalogComparison = compareCatalogs(parsed.records as Record<string, any>[], Array.isArray(previousParsed.records) ? previousParsed.records as Record<string, any>[] : []);
   }
   const structured = structuredBytes(parsed, { requestId, axCode: input.axCode, epc: effectiveEpc, manufacturer: input.manufacturer, description: input.description, edition: input.edition, family: input.family, modelIds: input.modelIds, range: input.range, previousRequestId: input.previousRequestId, imageComparison, catalogComparison });
   await uploadBytes(structuredKey, structured, "application/json");
@@ -290,6 +291,18 @@ async function waitForChild(requestId: string) {
 async function processModel(job: Job<{ requestId: string; input: ModelExtractionRequest }>) {
   const { requestId, input } = job.data;
   const enabled = (code: string) => input.exports?.[code as keyof typeof input.exports] !== false;
+  const validateComparisonRequest = async (comparisonRequestId: string, kind: "previous" | "reference") => {
+    const comparison = await getState(comparisonRequestId);
+    if (comparison?.status !== "completed" || !comparison.modelInput) throw new Error(`${kind} comparison request must be completed and contain modelInput`);
+    const other = comparison.modelInput;
+    if (other.manufacturer !== input.manufacturer || other.family !== input.family || other.axCode !== input.axCode) throw new Error(`${kind} comparison request belongs to a different model`);
+    const inputEpc = input.epc ?? epcFromDate(new Date());
+    const otherEpc = other.epc ?? epcFromDate(comparison.createdAt);
+    if (kind === "previous" && inputEpc === otherEpc) throw new Error("previousRequestId must use a different EPC");
+    if (kind === "reference" && inputEpc !== otherEpc) throw new Error("referenceRequestId must use the same EPC");
+  };
+  if (input.previousRequestId) await validateComparisonRequest(input.previousRequestId, "previous");
+  if (input.referenceRequestId) await validateComparisonRequest(input.referenceRequestId, "reference");
   const children: Record<string, { requestId: string; status?: JobState["status"] }> = {};
   const previous = input.resumeRequestId ? await getState(input.resumeRequestId) : undefined;
   const runChild = async (key: string, child: PartsRequest) => {
