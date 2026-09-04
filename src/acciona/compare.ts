@@ -6,7 +6,16 @@ export type ComparableReference = Record<string, unknown>;
 export type ReferenceComparison = { added: ComparableReference[]; deleted: ComparableReference[]; changed: Array<{ key: string; before: ComparableReference; after: ComparableReference }> };
 
 const keyOf = (row: ComparableReference) => [row.Dato12, row.Dato1, row.Dato8, row.Dato9].map((value) => String(value ?? "").trim()).join("|");
-const fingerprint = (row: ComparableReference) => createHash("sha1").update(JSON.stringify(Object.fromEntries(Object.entries(row).filter(([key]) => !["DatoFecha", "DatoFecha1"].includes(key)))).replace(/\s+$/gm, "")).digest("hex");
+export function normalizeComparisonValue(value: unknown): string {
+  return value == null ? "" : String(value).trim();
+}
+
+export function normalizedFingerprint(row: ComparableReference, ignoredFields = ["DatoFecha", "DatoFecha1"]): string {
+  const normalized = Object.fromEntries(Object.entries(row).filter(([key]) => !ignoredFields.includes(key)).map(([key, value]) => [key, normalizeComparisonValue(value)]));
+  return createHash("sha1").update(JSON.stringify(normalized)).digest("hex");
+}
+
+const fingerprint = (row: ComparableReference) => normalizedFingerprint(row);
 const groupBy = <T>(rows: T[], key: (row: T) => string) => rows.reduce((groups, row) => groups.set(key(row), [...(groups.get(key(row)) ?? []), row]), new Map<string, T[]>());
 
 export function compareReferences(current: ComparableReference[], previous: ComparableReference[]): ReferenceComparison {
@@ -31,6 +40,32 @@ export function compareReferences(current: ComparableReference[], previous: Comp
     deleted.push(...old);
   }
   return { added, deleted, changed };
+}
+
+export type TableComparison = ReferenceComparison & { table: string; keyFields: string[] };
+
+export function compareTableRows(table: string, current: ComparableReference[], previous: ComparableReference[], keyFields: string[], ignoredFields: string[] = []): TableComparison {
+  const key = (row: ComparableReference) => keyFields.map((field) => normalizeComparisonValue(row[field])).join("|");
+  const currentByKey = groupBy(current, key);
+  const previousByKey = groupBy(previous, key);
+  const added: ComparableReference[] = [];
+  const deleted: ComparableReference[] = [];
+  const changed: TableComparison["changed"] = [];
+  for (const rowKey of new Set([...currentByKey.keys(), ...previousByKey.keys()])) {
+    const now = [...(currentByKey.get(rowKey) ?? [])];
+    const old = [...(previousByKey.get(rowKey) ?? [])];
+    for (const row of now) {
+      const matchIndex = old.findIndex((candidate) => normalizedFingerprint(candidate, ignoredFields).toString() === normalizedFingerprint(row, ignoredFields).toString());
+      if (matchIndex >= 0) old.splice(matchIndex, 1);
+      else {
+        const before = old.shift();
+        if (before) changed.push({ key: rowKey, before, after: row });
+        else added.push(row);
+      }
+    }
+    deleted.push(...old);
+  }
+  return { table, keyFields, added, deleted, changed };
 }
 
 const referenceColumns = ["IdModeloAudatex", "IdModelo", "IdSeccion", ...Array.from({ length: 31 }, (_, index) => `Dato${index + 1}`), "DatoFecha", "DatoFecha1", "DescripcionTotal"];

@@ -13,6 +13,7 @@ import { getAccionaConfig, extractionDatabaseName } from "../src/db/acciona.js";
 import { assertAllowedDatabase, ACCIONA_TABLES } from "../src/acciona/writers.js";
 import { cleanAccionaComparisonReferences, cleanAccionaComparisonSections, flattenPartsCatalog, flattenRepairTree, toAccionaComparisonSections, toAccionaPartsData, toAccionaReferences } from "../src/acciona/transform.js";
 import { compareReferences } from "../src/acciona/compare.js";
+import { compareTableRows } from "../src/acciona/compare.js";
 import { compareCatalogs } from "../src/preprocessing/compare-catalog.js";
 
 describe("Renault Labour helpers", () => {
@@ -187,6 +188,13 @@ describe("Renault Labour helpers", () => {
     expect(result.changed).toHaveLength(1);
     expect(result.added).toHaveLength(1);
     expect(result.deleted).toHaveLength(0);
+  });
+
+  test("normalizes identity and edition metadata in table comparisons", () => {
+    const result = compareTableRows("Referencias", [{ ID: 2, Key: "A", Value: "x" }], [{ ID: 1, Key: "A", Value: "x" }], ["Key"], ["ID"]);
+    expect(result.changed).toHaveLength(0);
+    const sections = compareTableRows("DesSecciones", [{ Audatex: "P", CD: "0926", RutaFoto: "new" }], [{ Audatex: "P", CD: "0626", RutaFoto: "old" }], ["Audatex"], ["CD", "RutaFoto"]);
+    expect(sections.changed).toHaveLength(0);
   });
 
   test("matches unchanged catalog rows by hash", () => {

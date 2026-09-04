@@ -11,6 +11,7 @@
     "acciona:images": "bun src/acciona/publish-images.ts",
     "acciona:compare": "bun src/acciona/compare-model.ts",
     "acciona:verify-images": "bun src/acciona/verify-images.ts",
+    "acciona:compare-edition": "bun src/acciona/compare-edition.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
