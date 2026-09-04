@@ -19,6 +19,8 @@ export type Config = {
   jobConcurrency: number;
   pollIntervalMs: number;
   jobTimeoutMs: number;
+  workerLockDurationMs: number;
+  workerStalledIntervalMs: number;
   manufacturerDescriptions: Record<string, string>;
 };
 
@@ -56,6 +58,8 @@ export const config: Config = {
   jobConcurrency: numberEnv("JOB_CONCURRENCY", 2),
   pollIntervalMs: numberEnv("POLL_INTERVAL_MS", 30000),
   jobTimeoutMs: numberEnv("JOB_TIMEOUT_MS", 86400000),
+  workerLockDurationMs: numberEnv("WORKER_LOCK_DURATION_MS", 900000),
+  workerStalledIntervalMs: numberEnv("WORKER_STALLED_INTERVAL_MS", 60000),
   manufacturerDescriptions: (() => {
     const raw = process.env.RENAULT_MANUFACTURER_DESCRIPTIONS;
     if (!raw) return { RENAULT: "Renault" };

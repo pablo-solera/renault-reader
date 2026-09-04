@@ -351,15 +351,15 @@ async function processModel(job: Job<{ requestId: string; input: ModelExtraction
 }
 
 export function createLabourWorker() {
-  return new Worker(queueName, processLabour, { connection: redis, concurrency: config.jobConcurrency });
+  return new Worker(queueName, processLabour, { connection: redis, concurrency: config.jobConcurrency, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
 }
 
 export function createPartsWorker() {
-  return new Worker(partsQueueName, processParts, { connection: redis, concurrency: config.jobConcurrency });
+  return new Worker(partsQueueName, processParts, { connection: redis, concurrency: config.jobConcurrency, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
 }
 
 export function createModelsWorker() {
-  return new Worker(modelsQueueName, processModel, { connection: redis, concurrency: 1 });
+  return new Worker(modelsQueueName, processModel, { connection: redis, concurrency: 1, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
 }
 
 export async function markFailed(requestId: string, error: unknown) {

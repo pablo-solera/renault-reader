@@ -1,4 +1,5 @@
-import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand, GetObjectCommand, S3Client, HeadBucketCommand, CreateBucketCommand, S3ServiceException, UploadPartCommand } from "@aws-sdk/client-s3";
+import { AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand, GetObjectCommand, PutObjectCommand, S3Client, HeadBucketCommand, CreateBucketCommand, S3ServiceException, UploadPartCommand } from "@aws-sdk/client-s3";
+import { NodeHttpHandler } from "@smithy/node-http-handler";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { config } from "./config.js";
 
@@ -7,6 +8,9 @@ const client = new S3Client({
   endpoint: config.s3Endpoint,
   forcePathStyle: config.s3ForcePathStyle,
   credentials: config.s3AccessKey ? { accessKeyId: config.s3AccessKey, secretAccessKey: config.s3SecretKey } : undefined,
+  maxAttempts: 5,
+  retryMode: "adaptive",
+  requestHandler: new NodeHttpHandler({ connectionTimeout: 10000, requestTimeout: 120000 }),
 });
 
 export class S3UploadError extends Error {
@@ -32,6 +36,7 @@ export function normalizeUploadContentType(contentType: string): string {
 
 function s3Failure(error: unknown, operation: string, key: string): S3UploadError {
   const source = error as any;
+  const cause = source?.cause as any;
   const details = {
     operation,
     bucket: config.s3Bucket,
@@ -39,9 +44,13 @@ function s3Failure(error: unknown, operation: string, key: string): S3UploadErro
     status: source?.$metadata?.httpStatusCode,
     code: source?.Code ?? source?.name,
     requestId: source?.$metadata?.requestId,
+    errno: source?.errno ?? cause?.errno,
+    syscall: source?.syscall ?? cause?.syscall,
+    causeCode: cause?.code,
+    causeMessage: cause?.message,
   };
   console.error(JSON.stringify({ event: "s3_error", ...details }));
-  return new S3UploadError(`${operation} failed: ${details.code ?? "S3 error"}`, details);
+  return new S3UploadError(`${operation} failed: ${details.code ?? details.causeMessage ?? "S3 error"}`, details);
 }
 
 export async function ensureBucket() {
@@ -56,12 +65,30 @@ export async function ensureBucket() {
       await client.send(new CreateBucketCommand({ Bucket: config.s3Bucket }));
       return;
     }
-    throw new Error(status === 403 ? "S3 credentials cannot access the configured bucket" : `Cannot access S3 bucket (HTTP ${status ?? "unknown"})`);
+    const source = error as any;
+    const cause = source?.cause as any;
+    throw new Error(status === 403 ? "S3 credentials cannot access the configured bucket" : `Cannot access S3 bucket (HTTP ${status ?? "unknown"}${cause?.code ? `, ${cause.code}` : ""})`);
   }
 }
 
 export async function uploadObject(key: string, body: ReadableStream<Uint8Array>, contentType = "application/zip") {
   const normalizedContentType = normalizeUploadContentType(contentType);
+  const chunks: Uint8Array[] = [];
+  const reader = body.getReader();
+  let length = 0;
+  while (true) {
+    const next = await reader.read();
+    if (next.done) break;
+    if (next.value?.length) { chunks.push(next.value); length += next.value.length; }
+  }
+  if (length < 8 * 1024 * 1024) {
+    try {
+      await client.send(new PutObjectCommand({ Bucket: config.s3Bucket, Key: key, ContentType: normalizedContentType, Body: Buffer.concat(chunks, length) }));
+      return;
+    } catch (error) {
+      throw error instanceof S3UploadError ? error : s3Failure(error, "PutObject", key);
+    }
+  }
   let uploadId: string | undefined;
   const parts: Array<{ ETag?: string; PartNumber: number }> = [];
   let operation = "CreateMultipartUpload";
@@ -74,7 +101,6 @@ export async function uploadObject(key: string, body: ReadableStream<Uint8Array>
     uploadId = multipart.UploadId;
     if (!uploadId) throw new Error("S3 did not return a multipart upload ID");
 
-    const reader = body.getReader();
     const partSize = 5 * 1024 * 1024;
     let buffers: Uint8Array[] = [];
     let bufferedLength = 0;
@@ -94,12 +120,9 @@ export async function uploadObject(key: string, body: ReadableStream<Uint8Array>
       partNumber += 1;
     };
 
-    while (true) {
-      const next = await reader.read();
-      if (next.done) break;
-      if (!next.value?.length) continue;
-      buffers.push(next.value);
-      bufferedLength += next.value.length;
+    for (const chunk of chunks) {
+      buffers.push(chunk);
+      bufferedLength += chunk.length;
       if (bufferedLength >= partSize) {
         await uploadPart(Buffer.concat(buffers, bufferedLength));
         buffers = [];
