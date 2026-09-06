@@ -11,7 +11,7 @@ export type AccionaDataset = {
   tables: Record<string, { rows: Record<string, unknown>[]; types: Record<string, string> }>;
 };
 
-export type AccionaLoadOptions = { targetDatabase?: string; confirmProduction?: boolean; dryRun?: boolean };
+export type AccionaLoadOptions = { targetDatabase?: string; confirmProduction?: boolean; dryRun?: boolean; tables?: string[] };
 
 async function cleanupTable(transaction: sql.Transaction, table: string, dataset: AccionaDataset, data: AccionaDataset["tables"][string]): Promise<void> {
   const request = new sql.Request(transaction);
@@ -31,27 +31,28 @@ export async function loadAccionaDataset(dataset: AccionaDataset, options: Accio
   const config = getAccionaConfig();
   const targetDatabase = options.targetDatabase ?? config.targetDatabase;
   assertAllowedDatabase(targetDatabase, config.allowedDatabases, options.confirmProduction, options.dryRun);
+  const selectedTables = options.tables ? new Set(options.tables) : new Set(Object.keys(dataset.tables));
   const extractionTables = new Set(["DesSecciones", "filtrosecciones", "Descripciones", "Sustituciones", "Referencias", "ComparaPrevioReferencias", "ComparaReferencias", "ComparaPrevioDesSecciones", "ComparaDesSecciones"]);
   const globalTables = new Set(["CriteriaLabels", "PartsData"]);
   const destinations = new Map<string, string[]>();
-  for (const table of Object.keys(dataset.tables)) {
+  for (const table of Object.keys(dataset.tables).filter((name) => selectedTables.has(name))) {
     const database = extractionTables.has(table) ? targetDatabase : globalTables.has(table) ? config.globalDatabase : config.toyotaConfigDatabase;
     destinations.set(database, [...(destinations.get(database) ?? []), table]);
   }
   for (const database of destinations.keys()) assertAllowedDatabase(database, config.allowedDatabases, options.confirmProduction, options.dryRun);
   if (options.dryRun) {
-    return Object.fromEntries(Object.entries(dataset.tables).map(([table, data]) => [table, data.rows.length]));
+    return Object.fromEntries(Object.entries(dataset.tables).filter(([table]) => selectedTables.has(table)).map(([table, data]) => [table, data.rows.length]));
   }
   const pools = await Promise.all([...destinations.keys()].map(async (database) => [database, await openAccionaPool(config, database)] as const));
   try {
     const result: Record<string, number> = {};
-    for (const [table, data] of Object.entries(dataset.tables)) {
+    for (const [table, data] of Object.entries(dataset.tables).filter(([name]) => selectedTables.has(name))) {
       const database = extractionTables.has(table) ? targetDatabase : globalTables.has(table) ? config.globalDatabase : config.toyotaConfigDatabase;
       const pool = new Map(pools).get(database)!;
       result[table] = await withTransaction(pool, async (transaction) => {
         await cleanupTable(transaction, table, dataset, data);
         const columns = Object.keys(data.types);
-        const globalKeys = table === "CriteriaLabels" ? ["HTC", "labels", "lang"] : table === "PartsData" ? ["partNumber"] : table === "Audatex_TOYOTA" ? ["IdAudatex", "IdToyota"] : [];
+        const globalKeys = ["CriteriaLabels", "PartsData"].includes(table) ? ["Hash"] : table === "Audatex_TOYOTA" ? ["IdAudatex", "IdToyota"] : [];
         const inserted = globalKeys.length ? await mergeJsonRows(transaction, table, columns, data.types, globalKeys, data.rows) : await insertJsonRows(transaction, table, columns, data.types, data.rows);
         if (table === "CriteriaLabels") {
           const values = [...new Set(data.rows.map((row) => String(row.HTC ?? "")))].filter(Boolean);

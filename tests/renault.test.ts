@@ -8,7 +8,7 @@ import { deriveFamilies, selectPowertrain } from "../src/powertrain.js";
 import { buildCriteriaIndex } from "../src/preprocessing/criteria.js";
 import { clearHtc, evaluateApplicability } from "../src/preprocessing/applicability.js";
 import { buildTreeIndex, navigationPath } from "../src/preprocessing/tree.js";
-import { createCatalogHash } from "../src/preprocessing/hash.js";
+import { accessHash, createCatalogHash } from "../src/preprocessing/hash.js";
 import { getAccionaConfig, extractionDatabaseName } from "../src/db/acciona.js";
 import { assertAllowedDatabase, ACCIONA_TABLES } from "../src/acciona/writers.js";
 import { cleanAccionaComparisonReferences, cleanAccionaComparisonSections, flattenPartsCatalog, flattenRepairTree, toAccionaComparisonSections, toAccionaPartsData, toAccionaReferences } from "../src/acciona/transform.js";
@@ -145,6 +145,10 @@ describe("Renault Labour helpers", () => {
   test("creates stable Access-compatible catalog hashes", () => {
     const record = { plateId: "P1", illustrationFile: "a.png", sectionApplicabilityCleanedComparison: "A", hotSpotNumber: "1", partNumber: "123" };
     expect(createCatalogHash(record)).toBe(createCatalogHash({ ...record }));
+  });
+
+  test("uses Access HMAC-SHA1 hashes", () => {
+    expect(accessHash("809604KN3A01Yes574C574C9999FINASSY-POWERWDWSW,FRRH")).toBe("///dxiQZ68kvgIncsuJ+a3LiHiI=");
   });
 
   test("loads Acciona connection settings only from environment", () => {

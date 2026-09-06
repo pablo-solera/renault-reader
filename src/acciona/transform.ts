@@ -1,6 +1,6 @@
 import { buildCriteriaIndex } from "../preprocessing/criteria.js";
 import { preprocessCatalog } from "../preprocessing/catalog.js";
-import { createHash } from "node:crypto";
+import { accessHash } from "../preprocessing/hash.js";
 
 type AnyRow = Record<string, any>;
 
@@ -35,24 +35,13 @@ export function flattenPartsCatalog(plates: AnyRow[]): AnyRow[] {
   })));
 }
 
-export function flattenCriteriaLabels(records: AnyRow[], language = "EN"): AnyRow[] {
-  return records.map((record) => {
-    const groups = Array.isArray(record.labels) ? record.labels : [];
-    const group = groups[0] ?? {};
-    const labels = Object.keys(group);
-    const labelValues = labels.length ? Object.values(group[labels[0]] ?? {})[0] : undefined;
-    return {
-    Hash: String(record.id ?? ""),
-    HTC: String(record.id ?? ""),
-    objectOriginCode: String(record.objectOriginCode ?? ""),
-    labels: labels[0] ?? "",
-    subLabels: "",
-     lang: language,
-     description: String((labelValues as AnyRow)?.[language.toLowerCase()] ?? labelValues ?? "").slice(0, 255),
-    insertDate: new Date(),
-    active: true,
-    };
-  });
+export function flattenCriteriaLabels(records: AnyRow[]): AnyRow[] {
+  return records.flatMap((record) => (Array.isArray(record.labels) ? record.labels : []).flatMap((group: AnyRow) => Object.entries(group).flatMap(([labels, subLabels]) => Object.entries(subLabels as AnyRow).flatMap(([subLabel, languages]) => Object.entries(languages as AnyRow).map(([lang, description]) => {
+    const htc = String(record.id ?? "");
+    const objectOriginCode = String(record.objectOriginCode ?? "");
+    const text = [htc, objectOriginCode, labels, subLabel, lang, description ?? ""].map((value) => String(value).replaceAll(" ", "")).join("");
+    return { Hash: accessHash(text), HTC: htc, objectOriginCode, labels, subLabels: subLabel, lang, description: String(description ?? "").slice(0, 255), insertDate: new Date(), active: true };
+  })))));
 }
 
 function flattenTreeNode(node: AnyRow, result: AnyRow[]): void {
@@ -206,7 +195,7 @@ export function toAccionaSustituciones(records: AnyRow[], replacements: AnyRow[]
 
 export function toAccionaPartsData(records: AnyRow[]): AnyRow[] {
   return records.map((record) => ({
-    Hash: createHash("sha1").update([record.partNumber, record.brandCode, record.corporate, record.familyCode, record.productModelCode, record.designation].map((value) => String(value ?? "").replaceAll(" ", "")).join("")).digest("base64"),
+    Hash: accessHash([record.partNumber, record.brandCode, record.corporate, record.familyCode, record.productModelCode, record.designation].map((value) => String(value ?? "").replaceAll(" ", "")).join("")),
     partNumber: record.partNumber,
     brandCode: record.brandCode,
     corporate: record.corporate,
