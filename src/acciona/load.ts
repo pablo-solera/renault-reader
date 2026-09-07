@@ -22,7 +22,8 @@ async function cleanupTable(transaction: sql.Transaction, table: string, dataset
   if (table === "Sustituciones") return void await request.input("model", dataset.model).query("DELETE FROM dbo.Sustituciones WHERE Modelo=@model");
   if (["ComparaPrevioReferencias", "ComparaReferencias"].includes(table)) return void await request.input("ax", dataset.axCode).input("model", dataset.model).query(`DELETE FROM dbo.[${table}] WHERE IdModeloAudatex=@ax AND IdModelo=@model`);
   if (["ComparaPrevioDesSecciones", "ComparaDesSecciones"].includes(table)) return void await request.input("ax", dataset.axCode).input("model", dataset.model).query(`DELETE FROM dbo.[${table}] WHERE idAudatex=@ax AND Modelo=@model`);
-  if (table === "Audatex_TOYOTA" || table === "CriteriaLabels" || table === "PartsData") return;
+  if (table === "Audatex_TOYOTA") return void await request.input("ax", dataset.axCode).input("epc", dataset.epc).query("DELETE FROM dbo.Audatex_TOYOTA WHERE IdAudatex=@ax AND EPC=@epc");
+  if (table === "CriteriaLabels" || table === "PartsData") return;
   throw new Error(`No model-scoped cleanup defined for ${table}`);
 }
 
@@ -52,11 +53,11 @@ export async function loadAccionaDataset(dataset: AccionaDataset, options: Accio
       result[table] = await withTransaction(pool, async (transaction) => {
         await cleanupTable(transaction, table, dataset, data);
         const columns = Object.keys(data.types);
-        const globalKeys = ["CriteriaLabels", "PartsData"].includes(table) ? ["Hash"] : table === "Audatex_TOYOTA" ? ["IdAudatex", "IdToyota"] : [];
+        const globalKeys = ["CriteriaLabels", "PartsData"].includes(table) ? ["Hash"] : [];
         const inserted = globalKeys.length ? await mergeJsonRows(transaction, table, columns, data.types, globalKeys, data.rows) : await insertJsonRows(transaction, table, columns, data.types, data.rows);
         if (table === "CriteriaLabels") {
           const values = [...new Set(data.rows.map((row) => String(row.HTC ?? "")))].filter(Boolean);
-          await new sql.Request(transaction).input("keys", sql.NVarChar(sql.MAX), JSON.stringify(values)).query("WITH ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY HTC, labels, lang ORDER BY insertDate DESC, Hash DESC) AS rn FROM dbo.CriteriaLabels WHERE HTC IN (SELECT value FROM OPENJSON(@keys))) UPDATE ranked SET active = CASE WHEN rn = 1 THEN 1 ELSE 0 END");
+          await new sql.Request(transaction).input("keys", sql.NVarChar(sql.MAX), JSON.stringify(values)).query(";WITH ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY HTC, labels, lang ORDER BY insertDate DESC, Hash DESC) AS rn FROM dbo.CriteriaLabels WHERE HTC IN (SELECT value FROM OPENJSON(@keys))) UPDATE ranked SET active = CASE WHEN rn = 1 THEN 1 ELSE 0 END");
         }
         return inserted;
       });
