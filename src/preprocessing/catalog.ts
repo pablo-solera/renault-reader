@@ -1,10 +1,10 @@
 import { createCatalogHash } from "./hash.js";
 import { createApplicabilityEvaluator, type ApplicabilityResult } from "./applicability.js";
 import { buildTreeIndex, navigationPath } from "./tree.js";
-import { buildCriteriaIndex } from "./criteria.js";
+import { buildCriteriaCodeIndex } from "./criteria.js";
 
 export function preprocessCatalog(records: Record<string, unknown>[], criteria: Record<string, unknown>[], powertrain: Record<string, unknown>[], models: Record<string, unknown>[] = [], tree: Record<string, unknown>[] = []) {
-  const criteriaIndex = buildCriteriaIndex(criteria);
+  const criteriaIndex = buildCriteriaCodeIndex(criteria);
   const model = { ...models[0], manufacturerCode: models.map((item) => item.manufacturerCode).filter(Boolean).join(",") };
   const treeIndex = buildTreeIndex(tree);
   const applicabilityCache = new Map<string, ApplicabilityResult>();

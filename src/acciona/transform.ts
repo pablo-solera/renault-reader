@@ -1,4 +1,4 @@
-import { buildCriteriaIndex } from "../preprocessing/criteria.js";
+import { buildCriteriaCodeIndex } from "../preprocessing/criteria.js";
 import { preprocessCatalog } from "../preprocessing/catalog.js";
 import { accessHash } from "../preprocessing/hash.js";
 
@@ -59,8 +59,7 @@ export function flattenRepairTree(record: AnyRow): AnyRow[] {
 }
 
 export function preprocessRenaultCatalog(plates: AnyRow[], criteriaRecords: AnyRow[], powertrain: AnyRow[], models: AnyRow[], treeRecord: AnyRow) {
-  const criteria = flattenCriteriaLabels(criteriaRecords);
-  return preprocessCatalog(flattenPartsCatalog(plates), criteria, powertrain, models, flattenRepairTree(treeRecord));
+  return preprocessCatalog(flattenPartsCatalog(plates), criteriaRecords, powertrain, models, flattenRepairTree(treeRecord));
 }
 
 function dateValue(value: unknown): Date | null {
@@ -211,4 +210,4 @@ export function toAccionaPartsData(records: AnyRow[]): AnyRow[] {
   }));
 }
 
-export { buildCriteriaIndex };
+export { buildCriteriaCodeIndex };

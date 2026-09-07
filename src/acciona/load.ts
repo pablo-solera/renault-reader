@@ -1,6 +1,6 @@
 import sql from "mssql";
 import { getAccionaConfig, openAccionaPool } from "../db/acciona.js";
-import { insertJsonRows, mergeJsonRows } from "./bulk.js";
+import { bulkInsertRows, insertJsonRows, mergeJsonRows } from "./bulk.js";
 import { assertAllowedDatabase, withTransaction } from "./writers.js";
 
 export type AccionaDataset = {
@@ -54,7 +54,18 @@ export async function loadAccionaDataset(dataset: AccionaDataset, options: Accio
         await cleanupTable(transaction, table, dataset, data);
         const columns = Object.keys(data.types);
         const globalKeys = ["CriteriaLabels", "PartsData"].includes(table) ? ["Hash"] : [];
-        const inserted = globalKeys.length ? await mergeJsonRows(transaction, table, columns, data.types, globalKeys, data.rows) : await insertJsonRows(transaction, table, columns, data.types, data.rows);
+        let inserted: number;
+        if (table === "Audatex_TOYOTA") {
+          const row = data.rows[0];
+          const request = new sql.Request(transaction);
+          for (const column of columns) request.input(column, row[column] ?? null);
+          const names = columns.map((column) => `[${column}]`).join(", ");
+          const params = columns.map((column) => `@${column}`).join(", ");
+          await request.query(`INSERT INTO dbo.Audatex_TOYOTA (${names}) VALUES (${params})`);
+          inserted = 1;
+        } else {
+          inserted = globalKeys.length ? await mergeJsonRows(transaction, table, columns, data.types, globalKeys, data.rows) : await bulkInsertRows(transaction, table, columns, data.types, data.rows);
+        }
         if (table === "CriteriaLabels") {
           const values = [...new Set(data.rows.map((row) => String(row.HTC ?? "")))].filter(Boolean);
           await new sql.Request(transaction).input("keys", sql.NVarChar(sql.MAX), JSON.stringify(values)).query(";WITH ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY HTC, labels, lang ORDER BY insertDate DESC, Hash DESC) AS rn FROM dbo.CriteriaLabels WHERE HTC IN (SELECT value FROM OPENJSON(@keys))) UPDATE ranked SET active = CASE WHEN rn = 1 THEN 1 ELSE 0 END");
