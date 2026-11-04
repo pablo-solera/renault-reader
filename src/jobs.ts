@@ -9,17 +9,12 @@ import { compareCatalogs } from "./preprocessing/compare-catalog.js";
 import type { JobState, LabourRequest, PartsRequest } from "./types.js";
 import type { ModelExtractionRequest } from "./types.js";
 import { deriveFamilies, selectPowertrain } from "./powertrain.js";
+import { lockKey, partsLockKey, queueNames, stateKey } from "./redis-keys.js";
 
-const queueName = "labours";
-export const labourQueue = new Queue(queueName, { connection: redis });
-const partsQueueName = "parts";
-export const partsQueue = new Queue(partsQueueName, { connection: redis });
-const modelsQueueName = "models";
-export const modelsQueue = new Queue(modelsQueueName, { connection: redis });
+export const labourQueue = new Queue(queueNames.labours, { connection: redis });
+export const partsQueue = new Queue(queueNames.parts, { connection: redis });
+export const modelsQueue = new Queue(queueNames.models, { connection: redis });
 
-const stateKey = (id: string) => `asmdor:job:${id}`;
-const lockKey = (input: LabourRequest) => `asmdor:lock:renault:TM01:${input.family}:${input.format}:${input.language}:${input.range}:${input.publishedAfter ?? ""}`;
-const partsLockKey = (input: PartsRequest) => `asmdor:lock:renault:${input.exportType}:${input.family ?? "All"}:${input.format ?? "default"}:${input.language ?? ""}:${input.range}:${input.publishedAfter ?? ""}:${input.previousRequestId ?? ""}:${input.illustrationsRequestId ?? ""}:${input.modelIds?.join(",") ?? ""}`;
 
 export async function releasePartsLock(input: PartsRequest) {
   await redis.del(partsLockKey(input));
@@ -351,15 +346,15 @@ async function processModel(job: Job<{ requestId: string; input: ModelExtraction
 }
 
 export function createLabourWorker() {
-  return new Worker(queueName, processLabour, { connection: redis, concurrency: config.jobConcurrency, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
+  return new Worker(queueNames.labours, processLabour, { connection: redis, concurrency: config.jobConcurrency, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
 }
 
 export function createPartsWorker() {
-  return new Worker(partsQueueName, processParts, { connection: redis, concurrency: config.jobConcurrency, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
+  return new Worker(queueNames.parts, processParts, { connection: redis, concurrency: config.jobConcurrency, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
 }
 
 export function createModelsWorker() {
-  return new Worker(modelsQueueName, processModel, { connection: redis, concurrency: 1, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
+  return new Worker(queueNames.models, processModel, { connection: redis, concurrency: 1, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
 }
 
 export async function markFailed(requestId: string, error: unknown) {

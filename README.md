@@ -119,6 +119,17 @@ Además del archivo original, el worker guarda `structured/{requestId}.json` con
 
 Consulta `GET /models/:requestId`; al completar, `GET /models/:requestId/download` descarga el ZIP con el Excel TAPV filtrado y `structured.json` del procesamiento.
 
+## Redis
+
+El Redis se comparte con `bmw-reader` y `bmw-transformer` (en producción, el mismo contenedor), así que todo lo de este servicio lleva su prefijo, como en BMW. Los nombres están en `src/redis-keys.ts`.
+
+| Clave o cola | Contenido |
+|---|---|
+| `renault-reader:job:{id}` | Estado de cada solicitud (labours, parts y models). |
+| `renault-reader:lock:TM01:{familia}:{formato}:{idioma}:{rango}:{fecha}` | Bloqueo de una extracción de labours en curso. |
+| `renault-reader:lock:{exportType}:{…}` | Bloqueo de una exportación de parts. |
+| `bull:renault-labours:*`, `bull:renault-parts:*`, `bull:renault-models:*` | Colas de BullMQ. |
+
 ## Verificación
 
 ```powershell
