@@ -1,4 +1,5 @@
 export type Config = {
+  host: string;
   port: number;
   redisUrl: string;
   s3Endpoint?: string;
@@ -31,6 +32,9 @@ export function getRenaultCredentials() {
   return { email, password };
 }
 
+/** Loopback unless told otherwise; the container sets HOST=0.0.0.0 so other containers can reach the API. */
+export const listenHost = (value: string | undefined) => value?.trim() || "127.0.0.1";
+
 const numberEnv = (name: string, fallback: number) => {
   const value = Number(process.env[name] ?? fallback);
   if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be positive`);
@@ -38,6 +42,7 @@ const numberEnv = (name: string, fallback: number) => {
 };
 
 export const config: Config = {
+  host: listenHost(process.env.HOST),
   port: numberEnv("PORT", 3000),
   redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
   s3Endpoint: process.env.S3_ENDPOINT,

@@ -5,4 +5,4 @@ import { ensureBucket } from "./storage.js";
 
 getRenaultCredentials();
 await ensureBucket();
-app.listen(config.port, "localhost", () => console.log(`renault-reader listening on http://localhost:${config.port}`));
+app.listen(config.port, config.host, () => console.log(`renault-reader listening on http://${config.host}:${config.port}`));
