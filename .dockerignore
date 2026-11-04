@@ -1,0 +1,14 @@
+node_modules
+.git
+.github
+.env
+.env.*
+!.env.example
+data
+docs
+scripts
+tests
+compare-out
+sandbox-images
+model-*.zip
+*.log
