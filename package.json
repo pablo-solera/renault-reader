@@ -11,6 +11,7 @@
     "start": "bun src/index.ts",
     "worker": "bun src/worker.ts",
     "test": "bun test",
+    "test:integration": "bun run scripts/run-integration-tests.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
