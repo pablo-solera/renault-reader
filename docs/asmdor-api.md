@@ -195,12 +195,11 @@ The ZIP is downloaded with a direct `GET` to `downloadUrl` and must not receive 
 
 ## Local implementation decisions
 
-- Redis stores job state with a TTL and BullMQ queue data.
-- Renault credentials are loaded only from the worker/API environment (`RENAULT_EMAIL` and `RENAULT_PASSWORD`); they are never accepted over HTTP or stored in Redis.
-- ZIPs are streamed to S3 under `S3_LABOURS_PREFIX/renault_{requestId}_{fileName}`.
-- The Renault default prefix is `RENAULT_GROUP/files_datasource/RENAULT/Labour_Time`.
+- Redis stores request state with a TTL (`renault-reader:request:{id}`) and BullMQ queue data (`renault-extractions`).
+- Renault credentials are loaded only from the worker/API environment (`RENAULT_EMAIL`, `RENAULT_PASSWORD`, `GIGYA_API_KEY`); they are never accepted over HTTP or stored in Redis.
+- The Gigya login and ASMDOR token exchange run through core's `AccessTokenPool` (one slot): ASMDOR does not state the token lifetime, so `RENAULT_TOKEN_TTL_SECONDS` decides when it is replaced and a 401 replaces it at once.
+- Every export (TM01, REF01..05, PR03, PR05, PR06, PR08) is downloaded as is and stored under `RENAULT/{manufacturer}/labour|parts/...` with a manifest v2 (see `docs/s3-layout.md`). Nothing is parsed or transformed here.
 - There is no API authentication in the MVP; the server binds to loopback by default.
-- `POST /parts` is intentionally a `501` placeholder.
 
 ## Known uncertainties
 
