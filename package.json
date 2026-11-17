@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "overrides": {
+    "@types/node": "24.19.2"
+  },
   "scripts": {
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
@@ -16,20 +19,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.879.0",
-    "@aws-sdk/s3-request-presigner": "^3.879.0",
-    "bullmq": "^5.58.5",
-    "exceljs": "^4.4.0",
-    "express": "^5.1.0",
-    "fflate": "^0.8.3",
-    "ioredis": "^5.6.1",
-    "mssql": "^11.0.1"
+    "@aws-sdk/client-s3": "3.1170.0",
+    "@aws-sdk/s3-request-presigner": "3.1170.0",
+    "@smithy/node-http-handler": "4.14.2",
+    "bullmq": "6.7.7",
+    "exceljs": "4.4.0",
+    "express": "5.3.0",
+    "fflate": "0.8.3",
+    "ioredis": "6.0.0",
+    "mssql": "12.7.14",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@types/express": "^5.0.3",
-    "@types/mssql": "^12.3.0",
-    "@types/node": "^24.3.0",
-    "typescript": "^5.9.2"
+    "@types/bun": "1.4.4",
+    "@types/express": "5.0.6",
+    "@types/mssql": "12.3.0",
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
   }
 }
