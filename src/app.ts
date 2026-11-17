@@ -8,7 +8,7 @@ import type { ResourceHandlers } from "@pablosla/core-reader/application/v1-hand
 import type { AppDependencies } from "./interfaces/http/app-dependencies.js";
 import type { Resource } from "./domain/request.js";
 
-export const readerVersion = "1.0.0";
+const readerVersion = "1.0.0";
 
 export function createApp(dependencies: AppDependencies) {
   const app = express();

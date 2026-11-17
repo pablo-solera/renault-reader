@@ -19,7 +19,7 @@ import { buildRenaultOpenApi, docsHtml } from "../interfaces/http/openapi.js";
 import { toRequestState, toRequestSummary } from "../interfaces/http/state-mapper.js";
 import { createJobsRuntime } from "./jobs-runtime.js";
 
-export function renaultClientSettings(settings: AppConfig): RenaultClientSettings {
+function renaultClientSettings(settings: AppConfig): RenaultClientSettings {
   return {
     apiBase: settings.RENAULT_API_BASE.replace(/\/$/, "") + "/",
     gigyaBase: settings.GIGYA_API_BASE.replace(/\/$/, ""),

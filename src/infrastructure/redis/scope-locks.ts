@@ -3,7 +3,7 @@ import { RedisLeaseLock, type RedisLockClient } from "@pablosla/core-reader/infr
 import type { ScopeLocks } from "../../application/ports/scope-locks.js";
 import { renaultKeyspace } from "./request-repository.js";
 
-export const scopeLockKey = (bucket: string, path: string) => renaultKeyspace("scope-lock", createHash("sha256").update(`${bucket}\n${path}`).digest("hex"));
+const scopeLockKey = (bucket: string, path: string) => renaultKeyspace("scope-lock", createHash("sha256").update(`${bucket}\n${path}`).digest("hex"));
 
 /** The lock value is the request id, so a request can re-claim (extend) its own folders when resumed. */
 export function createRedisScopeLocks(client: RedisLockClient, options: { bucket: string; ttlMs: number }): ScopeLocks {

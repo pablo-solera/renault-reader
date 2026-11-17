@@ -3,7 +3,7 @@ import { modelOptionsSchema } from "@pablosla/core-reader/contract/v1";
 import { PARTS_EXPORT_CODES, LABOUR_QUERY_CODE } from "../../domain/exports.js";
 import type { ModelOptionsQuery } from "../../application/use-cases/get-model-options.js";
 
-export const modelOptionsQuerySchema = z.object({
+const modelOptionsQuerySchema = z.object({
   manufacturer: z.string().min(1).optional(),
   range: z.enum(["active", "old", "future"]).default("active"),
   exportType: z.enum([LABOUR_QUERY_CODE, ...PARTS_EXPORT_CODES]).default(LABOUR_QUERY_CODE),

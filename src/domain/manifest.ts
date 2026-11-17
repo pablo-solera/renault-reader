@@ -2,7 +2,7 @@ import { buildExtractionManifest, type ExtractionManifest } from "@pablosla/core
 import type { RequestInput } from "./request.js";
 
 /** Renault-specific content of the manifest (`details`); the renault-transformer reads exactly these keys. */
-export type UnitManifestDetails = {
+type UnitManifestDetails = {
   queryCode: string;
   queryDesc: string;
   fileName: string;

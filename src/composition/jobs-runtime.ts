@@ -132,4 +132,3 @@ export function createJobsRuntime(services: JobsRuntimeServices) {
   };
 }
 
-export type JobsRuntime = ReturnType<typeof createJobsRuntime>;

@@ -1,9 +1,3 @@
-export type SelectedModel = {
-  familyVehicle?: string;
-  family?: string;
-  bodyType?: string;
-  engineType?: string;
-};
 
 const value = (record: any, ...keys: string[]) => {
   for (const key of keys) {

@@ -14,7 +14,7 @@ export type RenaultClientSettings = {
   tokenTtlSeconds: number;
 };
 
-export class RenaultApiError extends UpstreamError {
+class RenaultApiError extends UpstreamError {
   constructor(message: string, readonly status?: number) {
     super(message, status === undefined ? undefined : { status });
     this.name = "RenaultApiError";

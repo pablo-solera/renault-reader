@@ -5,7 +5,7 @@ import type { RenaultRequestState } from "../../domain/request.js";
 export type ObjectLocator = { objectKey(...parts: string[]): string; bucket: string };
 
 /** Rebuilds the original create request from the persisted state. */
-export function renaultRequestFrom(state: RenaultRequestState): CreateRequest {
+function renaultRequestFrom(state: RenaultRequestState): CreateRequest {
   const { input } = state;
   const common = { manufacturer: input.manufacturer, ...(input.axCode ? { axCode: input.axCode } : {}), ...(input.edition ? { edition: input.edition } : {}), ...(input.language ? { language: input.language } : {}) };
   if (input.resource === "labours") return { ...common, selection: { family: input.family, format: input.format, range: input.range, ...(input.publishedAfter ? { publishedAfter: input.publishedAfter } : {}) } };

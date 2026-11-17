@@ -3,16 +3,16 @@ import { createBullMqQueue, type BullMqQueueClient } from "@pablosla/core-reader
 import { requestJobId, type QueueJobState, type RequestJob, type RequestQueue } from "../../application/ports/request-queue.js";
 
 export const REQUEST_QUEUE_NAME = "renault-extractions";
-export const REQUEST_JOB_NAME = "unit";
+const REQUEST_JOB_NAME = "unit";
 
 /** One attempt: a failed unit leaves the request `failed` and is retried explicitly with `/resume`, as the legacy service did. */
-export const REQUEST_JOB_OPTIONS = {
+const REQUEST_JOB_OPTIONS = {
   removeOnComplete: true,
   removeOnFail: 100,
   attempts: 1,
 } as const;
 
-export function toQueueJobState(state: string): QueueJobState {
+function toQueueJobState(state: string): QueueJobState {
   if (state === "active") return "active";
   if (["waiting", "delayed", "prioritized", "waiting-children"].includes(state)) return "pending";
   if (state === "completed") return "completed";

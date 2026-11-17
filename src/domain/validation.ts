@@ -15,7 +15,7 @@ export const labourSelectionSchema = z.object({
   publishedAfter: isoDate.optional(),
 }).strict();
 
-export const exportSwitchesSchema = z.object(Object.fromEntries(PARTS_EXPORT_CODES.map(code => [code, z.boolean().optional()]))).strict();
+const exportSwitchesSchema = z.object(Object.fromEntries(PARTS_EXPORT_CODES.map(code => [code, z.boolean().optional()]))).strict();
 
 export const partsSelectionSchema = z.object({
   description: text,

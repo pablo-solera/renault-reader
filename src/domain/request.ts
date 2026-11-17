@@ -35,7 +35,7 @@ export type PartsInput = CommonInput & {
 
 export type RequestInput = LabourInput | PartsInput;
 
-export type UnitStatus = "pending" | "running" | "completed" | "failed";
+type UnitStatus = "pending" | "running" | "completed" | "failed";
 
 /** One Renault export: one file stored raw in S3 plus its manifest. */
 export type UnitSummary = {

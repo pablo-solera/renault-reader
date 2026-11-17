@@ -8,7 +8,7 @@ const GROUP = "RENAULT";
 const slug = (value: string) => value.replace(/^[._]+/, "").replaceAll(".", "-");
 
 /** Segments between the resource and the date: the labour family, or the parts model folder and its edition. */
-export function scopeSegments(input: RequestInput): string[] {
+function scopeSegments(input: RequestInput): string[] {
   return input.resource === "labours"
     ? [input.family]
     : [`${input.axCode}_${normalizeDescription(input.description)}_${input.family}`, input.edition.replace("/", "-")];
@@ -31,12 +31,12 @@ export function labourUnitName(input: LabourInput): string {
 
 const pending = (input: RequestInput, unit: string, queryCode: string, family: string): UnitSummary => ({ unit, queryCode, family, path: unitFolder(input, unit), status: "pending" });
 
-export function labourUnits(input: LabourInput): UnitSummary[] {
+function labourUnits(input: LabourInput): UnitSummary[] {
   return [pending(input, labourUnitName(input), LABOUR_QUERY_CODE, input.family)];
 }
 
 /** REF04 and REF05 first, then the optional exports in the Access order; PR08/PR03 follow once the families are known. */
-export function partsUnits(input: PartsInput): UnitSummary[] {
+function partsUnits(input: PartsInput): UnitSummary[] {
   const codes = [...CORE_PARTS_EXPORTS, ...OPTIONAL_PARTS_EXPORTS.filter(code => isExportEnabled(input.exports, code))];
   return codes.map(code => pending(input, code, code, input.family));
 }

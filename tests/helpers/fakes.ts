@@ -67,7 +67,7 @@ export function memoryQueue() {
   return { queue, jobs };
 }
 
-export const profile = { value: "AUDATEX", user: "user@example.test", brand: "RENAULT", interpretModEvent: true };
+const profile = { value: "AUDATEX", user: "user@example.test", brand: "RENAULT", interpretModEvent: true };
 
 export function query(code: string, over: Record<string, unknown> = {}) {
   return { id: `id-${code}`, queryCode: code, queryDesc: `${code} desc`, queryService: `rest/launch/${code}`, queryDownloadPath: `PATH/${code.toLowerCase()}_export.zip`, familyFilter: false, language: null, formatList: [{ value: "zip" }], ...over };

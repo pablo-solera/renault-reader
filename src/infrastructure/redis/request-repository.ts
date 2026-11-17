@@ -11,7 +11,7 @@ export const renaultKeyspace = createKeyspace(redisNamespace);
 
 export type RequestRepositoryRedis = Pick<Redis, "get" | "set" | "del" | "watch" | "unwatch" | "multi" | "mget"> & RequestIndexRedis;
 
-export const requestStateKey = (requestId: string) => renaultKeyspace("request", requestId);
+const requestStateKey = (requestId: string) => renaultKeyspace("request", requestId);
 
 const resources: Resource[] = ["labours", "parts"];
 
