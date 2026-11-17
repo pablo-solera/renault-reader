@@ -1,0 +1,4 @@
+{
+  "entry": ["src/worker-healthcheck.ts", "scripts/*.ts", "tests/**/*.test.ts"],
+  "project": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"]
+}

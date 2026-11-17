@@ -1,8 +1,6 @@
-import { app } from "./app.js";
-import { config } from "./config.js";
-import { getRenaultCredentials } from "./config.js";
-import { ensureBucket } from "./storage.js";
+import { startApi } from "@pablosla/core-reader/interfaces/http/express/server";
+import { createRenaultContainer } from "./composition/container.js";
 
-getRenaultCredentials();
-await ensureBucket();
-app.listen(config.port, config.host, () => console.log(`renault-reader listening on http://${config.host}:${config.port}`));
+const container = createRenaultContainer();
+await container.objectStorage.ensureBucket();
+startApi({ app: container.app, host: container.config.HOST, port: container.config.PORT, logger: container.logger, close: () => container.close() });

@@ -1,140 +1,117 @@
 # Renault Reader
 
-API Bun + Express para generar exportaciones de ASMDOR y almacenarlas en S3 compatible.
+Reader de Renault Group (ASMDOR): descubre qué puede extraer la cuenta, pide los exports a ASMDOR, los descarga y los guarda
+**sin transformar** en un S3 compatible, con un manifiesto v2 que se escribe el último. Toda la transformación (reglas de Access,
+Acciona SQL, Excel, comparaciones) vive en `renault-transformer`.
+
+Sigue la misma estructura que `mercedes-reader` y usa `@pablosla/core-reader` (contrato HTTP v1, routers, errores, Redis,
+worker único, BullMQ, S3).
 
 ## Requisitos
 
-- Bun 1.3+
-- Redis 7+
-- Un bucket S3 compatible ya creado
+- Bun 1.4+
+- Redis 7+ (compartido con el resto de readers; todas las claves llevan el prefijo `renault-reader`)
+- Un bucket S3 compatible
 
 ## Arranque local
 
 ```powershell
 Copy-Item .env.example .env
 docker compose up -d redis
-```
-
-Configura en `.env` el endpoint, bucket, región y credenciales de S3. El bucket debe
-existir previamente y `S3_AUTO_CREATE_BUCKET=false` evita que un error de permisos se
-interprete como permiso para crearlo.
-
-Las exportaciones Renault se almacenan en:
-
-```text
-s3://<S3_BUCKET>/<S3_LABOURS_PREFIX>/renault_<requestId>_<fileName>
-```
-
-El prefijo por defecto es `RENAULT_GROUP/files_datasource/RENAULT/Labour_Time`.
-
-La variable del secreto se llama `S3_SECRET_ACCESS_KEY`. Si aparece `SignatureDoesNotMatch`,
-comprueba que la access key y el secreto pertenecen al mismo par, que no incluyen comillas
-ni espacios, y que la política permite acceder a `S3_BUCKET`. Rota cualquier secreto que
-haya sido compartido por chat o capturas.
-
-Las credenciales Renault se configuran exclusivamente en `.env` mediante
-`RENAULT_EMAIL` y `RENAULT_PASSWORD`. No se aceptan en las peticiones HTTP ni se
-guardan en Redis. La API y el worker deben usar el mismo entorno.
-Si una petición incluye `email` o `password`, se rechaza con `400`.
-
-```powershell
 bun install
-bun run start
+bun run start     # API
+bun run worker    # worker (otra terminal)
 ```
 
-En otra terminal, arranca el worker:
+Las credenciales de Renault se configuran **solo** en `.env`: `RENAULT_EMAIL`, `RENAULT_PASSWORD` y `GIGYA_API_KEY`. No se aceptan en
+las peticiones HTTP, no se guardan en Redis y no se escriben en logs. Las credenciales del Access original están expuestas: hay que rotarlas.
 
-```powershell
-bun run worker
-```
+La API escucha en `127.0.0.1:3000` y no tiene autenticación propia: no la expongas fuera de una red de confianza.
+Documentación: `GET /docs` (Swagger) y `GET /openapi.json`. El worker no arranca si ya hay otro activo (lock singleton con heartbeat).
 
-La API escucha en `127.0.0.1:3000` y no tiene autenticación propia por decisión del MVP. No la expongas fuera de una red confiable.
+## API v1
 
-Documentación Swagger:
+Rutas de sistema: `/health`, `/ready`, `/openapi.json`, `/docs`. Los errores siguen el contrato: `{ "error": { "code", "message", "details" } }`.
 
-- UI: `http://127.0.0.1:3000/docs`
-- OpenAPI JSON: `http://127.0.0.1:3000/openapi.json`
+| Ruta | Descripción |
+|---|---|
+| `GET /v1/info` | Reader, versión, fabricantes (`RENAULT_MANUFACTURERS`) y capacidades |
+| `GET /v1/models/options` | Familias autorizadas, formatos e idiomas. Filtros: `range` (`active`, `old`, `future`), `exportType` (`TM01` por defecto o un código de Parts), `manufacturer`, `includeRaw` |
+| `POST /v1/labours` | Un export TM01 |
+| `POST /v1/parts` | Extracción de un modelo (antiguo `POST /models`) |
+| `GET /v1/{labours,parts}` | Listado con cursor y filtros (`status`, `manufacturer`, `axCode`, `edition`) |
+| `GET /v1/{recurso}/{id}` | Estado, unidades y artifacts |
+| `GET /v1/{recurso}/{id}/download` | 307 a una URL firmada; `?artifact=nombre`. En labours el export es el artifact principal |
+| `POST /v1/{recurso}/{id}/cancel` | Cancela (200) o pide parar (202) |
+| `POST /v1/{recurso}/{id}/resume` | Reanuda desde la primera unidad incompleta (`{ "force": true }` salta la comprobación de heartbeat) |
 
-## API
+Las rutas sin versión (`/labours`, `/parts`, `/models`, `/labours/options`, `/parts/options`) se retiraron sin alias.
 
-Descubrir opciones reales autorizadas:
-
-```http
-POST /labours/options
-Content-Type: application/json
-```
+### Labours
 
 ```json
-{
-  "range": "active"
-}
+{ "manufacturer": "RENAULT", "language": "en", "selection": { "family": "X1310", "format": "json.zip", "range": "active", "publishedAfter": "2026-05-01" } }
 ```
 
-Crear un job:
-
-```http
-POST /labours
-Content-Type: application/json
-```
-
-```json
-{
-  "family": "<family.value>",
-  "format": "_json.zip",
-  "language": "en",
-  "range": "active",
-  "publishedAfter": "2026-05-01"
-}
-```
-
-La respuesta es `202` con `requestId`. Consulta `GET /labours/:requestId`. Cuando el estado sea `completed`, descarga mediante `GET /labours/:requestId/download`.
+Usa `GET /v1/models/options` para obtener familias, formatos e idiomas autorizados; cada familia trae su `selection` lista para usar.
 
 ### Parts
 
-Los códigos soportados son `REF01`, `REF02`, `REF03`, `REF04`, `REF05`, `PR03`, `PR05`, `PR06` y `PR08`.
-Consulta `POST /parts/options` con `{ "exportType": "PR08", "range": "active" }` y después crea el job con `POST /parts`.
-`format` y `language` son opcionales cuando el export no los requiere. `axCode`, `epc` y `manufacturer` se conservan como contexto del proceso. Para `REF05`, `previousRequestId` genera las hojas `New` y `Deleted` del Excel TAPV. Los archivos se almacenan bajo `S3_PARTS_PREFIX/{exportType}/` y el reporte final bajo `reports/`.
-
-En `REF04`, `modelIds` permite replicar la selección de modelos del Access. Si no se indica `epc`, se genera automáticamente como `MMYY`. El mapeo código/descripción de fabricante se configura con `RENAULT_MANUFACTURER_DESCRIPTIONS` en formato JSON.
-
-Además del archivo original, el worker guarda `structured/{requestId}.json` con los registros parseados, hashes MD5 de ilustraciones PR03 y los resultados de preprocessing/comparación disponibles.
-
-### Procesamiento completo de modelos
-
-`POST /models` replica el flujo de Access: procesa `REF04` y `REF05`, filtra el powertrain por los `modelIds`, deriva las familias de vehículo, motor, caja y batería, y procesa `PR08`/`PR03` por cada familia. También puede activar `REF01`, `REF02`, `REF03`, `PR05` y `PR06` mediante `exports`.
-
 ```json
 {
-  "axCode": "5208",
-  "edition": "02/0",
-  "manufacturer": "DACIA",
-  "description": "Bigster (SVA)",
-  "family": "X1310",
-  "modelIds": ["MODEL-0013", "MODEL-0014"],
-  "range": "active",
-  "language": "en",
-  "exports": { "REF01": true, "REF02": true, "REF03": true, "PR05": true, "PR06": true, "PR08": true, "PR03": true }
+  "manufacturer": "DACIA", "axCode": "5208", "edition": "02/0", "language": "en",
+  "selection": { "description": "Bigster (SVA)", "family": "X1310", "modelIds": ["MODEL-0013"], "range": "active",
+                 "exports": { "REF01": true, "REF02": true, "REF03": true, "PR05": true, "PR06": true, "PR08": true, "PR03": true } }
 }
 ```
 
-Consulta `GET /models/:requestId`; al completar, `GET /models/:requestId/download` descarga el ZIP con el Excel TAPV filtrado y `structured.json` del procesamiento.
+Extrae `REF04` y `REF05` (siempre), los exports opcionales activados (todos por defecto) y después `PR08` y `PR03` por cada familia
+derivada de los modelos elegidos. `axCode` tiene 3 o 4 caracteres y `edition` el formato `NN/N`.
+La antigua exportación suelta (`POST /parts` con `exportType`) se sustituye por `exports` y la comparación entre ediciones, el
+informe TAPV y la carga en Acciona pasan a `renault-transformer`.
+
+## Salida en S3
+
+```text
+RENAULT/{fabricante}/labour/{familia}/{YYYYMMDD}/{unidad}/{archivo original} + {unidad}_completed.json
+RENAULT/{fabricante}/parts/{axCode}_{descripción}_{familia}/{edición}/{YYYYMMDD}/{unidad}/...
+```
+
+Detalle de unidades, ficheros y manifiesto en [`docs/s3-layout.md`](docs/s3-layout.md). Una unidad con manifiesto no se vuelve a pedir
+a Renault; por eso reanudar o repetir una petición del mismo día es barato. Cancelar no borra nada.
 
 ## Redis
 
-El Redis se comparte con `bmw-reader` y `bmw-transformer` (en producción, el mismo contenedor), así que todo lo de este servicio lleva su prefijo, como en BMW. Los nombres están en `src/redis-keys.ts`.
-
 | Clave o cola | Contenido |
 |---|---|
-| `renault-reader:job:{id}` | Estado de cada solicitud (labours, parts y models). |
-| `renault-reader:lock:TM01:{familia}:{formato}:{idioma}:{rango}:{fecha}` | Bloqueo de una extracción de labours en curso. |
-| `renault-reader:lock:{exportType}:{…}` | Bloqueo de una exportación de parts. |
-| `bull:renault-labours:*`, `bull:renault-parts:*`, `bull:renault-models:*` | Colas de BullMQ. |
+| `renault-reader:request:{id}` | Estado de cada petición (labours y parts) |
+| `renault-reader:{labours,parts}:index` | Índice paginado por recurso |
+| `renault-reader:scope-lock:{hash}` | Una petición por carpeta de S3 |
+| `renault-reader:request:{id}:cancel` / `:heartbeat` | Bandera de cancelación y latido del job |
+| `bull:renault-extractions:*` | Cola de BullMQ: un job es una unidad |
+
+Las peticiones y colas anteriores (`renault-reader:job:*`, `renault-labours`, `renault-parts`, `renault-models`) no se migran.
+
+## Configuración
+
+Ver `.env.example`. Valores que conservan la semántica anterior: `POLL_INTERVAL_MS` (30 s entre consultas al History),
+`JOB_TIMEOUT_MS` (24 h de espera máxima), `JOB_CONCURRENCY`. `RENAULT_TOKEN_TTL_SECONDS` indica cuánto se reutiliza el token
+de ASMDOR (no informa su caducidad); un 401 lo renueva antes.
+
+## Docker
+
+```powershell
+docker compose up --build
+```
+
+`api` y `worker` comparten imagen; el worker tiene healthcheck propio y `stop_grace_period` de 90 s.
 
 ## Verificación
 
 ```powershell
-bun test
+bun test                  # unitarios y HTTP (fakes, sin Redis ni S3)
 bun run typecheck
+bun run test:integration  # Redis y RustFS en Docker (puertos 46379 y 49000) contra un ASMDOR simulado
 ```
 
 Los tests no usan credenciales ni llaman a Renault.
