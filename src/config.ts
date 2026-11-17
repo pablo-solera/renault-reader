@@ -1,78 +1,55 @@
-export type Config = {
-  host: string;
-  port: number;
-  redisUrl: string;
-  s3Endpoint?: string;
-  s3Region: string;
-  s3Bucket: string;
-  s3LaboursPrefix: string;
-  s3PartsPrefix: string;
-  s3SparePartPrefix: string;
-  s3PartsSegment: string;
-  s3AccessKey: string;
-  s3SecretKey: string;
-  s3ForcePathStyle: boolean;
-  s3AutoCreateBucket: boolean;
-  stateTtlSeconds: number;
-  renaultApiBase: string;
-  gigyaApiBase: string;
-  gigyaApiKey: string;
-  jobConcurrency: number;
-  pollIntervalMs: number;
-  jobTimeoutMs: number;
-  workerLockDurationMs: number;
-  workerStalledIntervalMs: number;
-  manufacturerDescriptions: Record<string, string>;
-};
+import { z } from "zod";
 
-export function getRenaultCredentials() {
-  const email = process.env.RENAULT_EMAIL?.trim();
-  const password = process.env.RENAULT_PASSWORD;
-  if (!email || !password) throw new Error("RENAULT_EMAIL and RENAULT_PASSWORD are required");
-  return { email, password };
+const emptyToUndefined = (value: unknown) => value === "" ? undefined : value;
+const boolean = (fallback: "true" | "false") => z.enum(["true", "false"]).default(fallback);
+const positive = (fallback: number) => z.coerce.number().int().positive().default(fallback);
+
+const envSchema = z.object({
+  HOST: z.string().default("127.0.0.1"),
+  PORT: positive(3000),
+  REDIS_URL: z.string().default("redis://127.0.0.1:6379"),
+  STATE_TTL_SECONDS: positive(604800),
+  RENAULT_MANUFACTURERS: z.string().default("RENAULT,DACIA"),
+  RENAULT_API_BASE: z.string().url().default("https://opeeu.a5m.opeeu.asdh.aws.renault.com/api/"),
+  GIGYA_API_BASE: z.string().url().default("https://accounts.eu1.gigya.com"),
+  GIGYA_API_KEY: z.string().default(""),
+  RENAULT_EMAIL: z.string().default(""),
+  RENAULT_PASSWORD: z.string().default(""),
+  RENAULT_API_TIMEOUT_MS: positive(60000),
+  RENAULT_DOWNLOAD_TIMEOUT_MS: positive(1800000),
+  RENAULT_TOKEN_TTL_SECONDS: positive(1800),
+  JOB_CONCURRENCY: positive(2),
+  POLL_INTERVAL_MS: positive(30000),
+  JOB_TIMEOUT_MS: positive(86400000),
+  WORKER_LOCK_DURATION_MS: positive(900000),
+  WORKER_STALLED_INTERVAL_MS: positive(60000),
+  S3_ENDPOINT: z.preprocess(emptyToUndefined, z.string().url().optional()),
+  S3_REGION: z.string().default("us-east-1"),
+  S3_ACCESS_KEY: z.string().default(""),
+  S3_SECRET_ACCESS_KEY: z.string().default(""),
+  S3_BUCKET: z.string().default("magnets-reader-dev"),
+  S3_PREFIX: z.string().default(""),
+  S3_REQUEST_TIMEOUT_MS: positive(600000),
+  S3_FORCE_PATH_STYLE: boolean("true"),
+  S3_AUTO_CREATE_BUCKET: boolean("false"),
+});
+
+export type AppConfig = z.infer<typeof envSchema> & { s3ForcePathStyle: boolean; s3AutoCreateBucket: boolean; manufacturers: string[] };
+
+export function loadConfig(env: NodeJS.ProcessEnv): AppConfig {
+  const raw = envSchema.parse(env);
+  return {
+    ...raw,
+    s3ForcePathStyle: raw.S3_FORCE_PATH_STYLE === "true",
+    s3AutoCreateBucket: raw.S3_AUTO_CREATE_BUCKET === "true",
+    manufacturers: raw.RENAULT_MANUFACTURERS.split(",").map(item => item.trim()).filter(Boolean),
+  };
 }
 
-/** Loopback unless told otherwise; the container sets HOST=0.0.0.0 so other containers can reach the API. */
-export const listenHost = (value: string | undefined) => value?.trim() || "127.0.0.1";
-
-const numberEnv = (name: string, fallback: number) => {
-  const value = Number(process.env[name] ?? fallback);
-  if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be positive`);
-  return value;
-};
-
-export const config: Config = {
-  host: listenHost(process.env.HOST),
-  port: numberEnv("PORT", 3000),
-  redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
-  s3Endpoint: process.env.S3_ENDPOINT,
-  s3Region: process.env.S3_REGION ?? "us-east-1",
-  s3Bucket: process.env.S3_BUCKET ?? "magnets-reader-dev",
-  s3LaboursPrefix: process.env.S3_LABOURS_PREFIX ?? "RENAULT_GROUP/files_datasource/RENAULT/Labour_Time",
-  s3PartsPrefix: process.env.S3_PARTS_PREFIX ?? "RENAULT_GROUP/files_datasource/RENAULT/Parts",
-  s3SparePartPrefix: process.env.S3_SPARE_PART_PREFIX ?? "RENAULT_GROUP/files_datasource",
-  s3PartsSegment: process.env.S3_PARTS_SEGMENT ?? "Parts",
-  s3AccessKey: process.env.S3_ACCESS_KEY ?? "",
-  s3SecretKey: process.env.S3_SECRET_ACCESS_KEY ?? "",
-  s3ForcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
-  s3AutoCreateBucket: process.env.S3_AUTO_CREATE_BUCKET === "true",
-  stateTtlSeconds: numberEnv("STATE_TTL_SECONDS", 604800),
-  renaultApiBase: (process.env.RENAULT_API_BASE ?? "https://opeeu.a5m.opeeu.asdh.aws.renault.com/api/").replace(/\/$/, "") + "/",
-  gigyaApiBase: (process.env.GIGYA_API_BASE ?? "https://accounts.eu1.gigya.com").replace(/\/$/, ""),
-  gigyaApiKey: process.env.GIGYA_API_KEY ?? "",
-  jobConcurrency: numberEnv("JOB_CONCURRENCY", 2),
-  pollIntervalMs: numberEnv("POLL_INTERVAL_MS", 30000),
-  jobTimeoutMs: numberEnv("JOB_TIMEOUT_MS", 86400000),
-  workerLockDurationMs: numberEnv("WORKER_LOCK_DURATION_MS", 900000),
-  workerStalledIntervalMs: numberEnv("WORKER_STALLED_INTERVAL_MS", 60000),
-  manufacturerDescriptions: (() => {
-    const raw = process.env.RENAULT_MANUFACTURER_DESCRIPTIONS;
-    if (!raw) return { RENAULT: "Renault" };
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, string> : {};
-    } catch {
-      throw new Error("RENAULT_MANUFACTURER_DESCRIPTIONS must be valid JSON");
-    }
-  })(),
-};
+/** Credentials come only from the environment; they are never accepted over HTTP or stored in Redis. */
+export function requireRenaultCredentials(settings: Pick<AppConfig, "RENAULT_EMAIL" | "RENAULT_PASSWORD" | "GIGYA_API_KEY">) {
+  const email = settings.RENAULT_EMAIL.trim();
+  if (!email || !settings.RENAULT_PASSWORD) throw new Error("RENAULT_EMAIL and RENAULT_PASSWORD are required");
+  if (!settings.GIGYA_API_KEY) throw new Error("GIGYA_API_KEY is required");
+  return { email, password: settings.RENAULT_PASSWORD };
+}
