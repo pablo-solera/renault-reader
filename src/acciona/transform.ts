@@ -1,6 +1,7 @@
 import { buildCriteriaCodeIndex } from "../preprocessing/criteria.js";
 import { preprocessCatalog } from "../preprocessing/catalog.js";
 import { accessHash } from "../preprocessing/hash.js";
+import { accessDateText, accessDateValue } from "../preprocessing/access-date.js";
 
 type AnyRow = Record<string, any>;
 
@@ -19,7 +20,13 @@ export function flattenPartsCatalog(plates: AnyRow[]): AnyRow[] {
     illustrationPlateNumber: plate.illustrationPlateNumber,
     illustrationFile: plate.illustrationFile,
     nodes: Array.isArray(plate.nodes) ? plate.nodes.join(",") : plate.nodes,
-    sectionApplicability: crlf((plate.applicability ?? []).map((item: AnyRow) => item.mtc)),
+    sectionApplicability: crlf((plate.applicability ?? []).map((item: AnyRow) => [
+      item.mtc,
+      Array.isArray(item.manufacturingPlantCode) ? item.manufacturingPlantCode.join(",") : item.manufacturingPlantCode,
+      Array.isArray(item.manufacturingPlantLabel) ? item.manufacturingPlantLabel.join(",") : item.manufacturingPlantLabel,
+      item.startDate,
+      item.endDate,
+    ].map((value) => String(value ?? "")).join("|"))),
     partsApplicability: crlf((line.applicability ?? []).map((item: AnyRow) => [
       item.mtc,
       first(item.manufacturingPlantCode),
@@ -36,12 +43,15 @@ export function flattenPartsCatalog(plates: AnyRow[]): AnyRow[] {
 }
 
 export function flattenCriteriaLabels(records: AnyRow[]): AnyRow[] {
-  return records.flatMap((record) => (Array.isArray(record.labels) ? record.labels : []).flatMap((group: AnyRow) => Object.entries(group).flatMap(([labels, subLabels]) => Object.entries(subLabels as AnyRow).flatMap(([subLabel, languages]) => Object.entries(languages as AnyRow).map(([lang, description]) => {
+  const rows = records.flatMap((record) => (Array.isArray(record.labels) ? record.labels : []).flatMap((group: AnyRow) => Object.entries(group).flatMap(([labels, subLabels]) => Object.entries(subLabels as AnyRow).flatMap(([subLabel, languages]) => Object.entries(languages as AnyRow).map(([lang, description]) => {
     const htc = String(record.id ?? "");
     const objectOriginCode = String(record.objectOriginCode ?? "");
     const text = [htc, objectOriginCode, labels, subLabel, lang, description ?? ""].map((value) => String(value).replaceAll(" ", "")).join("");
     return { Hash: accessHash(text), HTC: htc, objectOriginCode, labels, subLabels: subLabel, lang, description: String(description ?? "").slice(0, 255), insertDate: new Date(), active: true };
   })))));
+  const latest = new Map<string, AnyRow>();
+  for (const row of rows) latest.set(`${row.HTC}|${row.labels}|${row.lang}`, row);
+  return [...latest.values()];
 }
 
 function flattenTreeNode(node: AnyRow, result: AnyRow[]): void {
@@ -58,8 +68,9 @@ export function flattenRepairTree(record: AnyRow): AnyRow[] {
   return result;
 }
 
-export function preprocessRenaultCatalog(plates: AnyRow[], criteriaRecords: AnyRow[], powertrain: AnyRow[], models: AnyRow[], treeRecord: AnyRow) {
-  return preprocessCatalog(flattenPartsCatalog(plates), criteriaRecords, powertrain, models, flattenRepairTree(treeRecord));
+export function preprocessRenaultCatalog(plates: AnyRow[], criteriaRecords: AnyRow[], powertrain: AnyRow[], models: AnyRow[], treeRecord: AnyRow | AnyRow[]) {
+  const tree = Array.isArray(treeRecord) ? treeRecord : flattenRepairTree(treeRecord);
+  return preprocessCatalog(flattenPartsCatalog(plates), criteriaRecords, powertrain, models, tree);
 }
 
 function dateValue(value: unknown): Date | null {
@@ -71,13 +82,20 @@ function dateValue(value: unknown): Date | null {
 export function toAccionaReferences(records: AnyRow[], axCode: string, model: string, replacements: AnyRow[] = []): AnyRow[] {
   const replacementByPart = new Map<string, AnyRow>();
   for (const replacement of replacements) replacementByPart.set(String(replacement.partNumberReplaced), replacement);
+  const targetsFor = (partNumber: string, seen = new Set<string>()): AnyRow[] => {
+    if (seen.has(partNumber)) return [];
+    seen.add(partNumber);
+    const direct = Array.isArray(replacementByPart.get(partNumber)?.target) ? replacementByPart.get(partNumber)!.target : [];
+    return direct.flatMap((target: AnyRow) => [target, ...targetsFor(String(target.partNumber ?? ""), new Set(seen))]);
+  };
   return records.filter((record) => record.ActivePartsNumber === 1).flatMap((record) => {
     const replacement = replacementByPart.get(String(record.partNumber));
-    const targets = Array.isArray(replacement?.target) ? replacement.target : [];
+    const targets = targetsFor(String(record.partNumber));
     const replacementPart = record.latestReplacementPart ?? (targets.length > 1 ? "Multi." : targets[0]?.partNumber ?? "");
     const applicability = String(record.partsApplicabilityCleaned ?? "").split(/\r?\n/).filter(Boolean);
     return applicability.map((line) => {
-      const [, , plant, start, end] = line.split("|");
+    const [, plantCode, plantLabel, start, end] = line.split("|");
+    const productArea = plantCode ? plantLabel : "";
       return {
         IdModeloAudatex: axCode,
         IdModelo: model,
@@ -87,15 +105,15 @@ export function toAccionaReferences(records: AnyRow[], axCode: string, model: st
         Dato3: record.partNumber,
          Dato5: replacementPart,
         Dato6: `A_${model}_${record.partNumber ?? ""}`,
-        Dato8: start ? `${start.slice(6, 8)}/${start.slice(4, 6)}/${start.slice(0, 4)}` : "",
-        Dato9: end ? `${end.slice(6, 8)}/${end.slice(4, 6)}/${end.slice(0, 4)}` : "",
+         Dato8: accessDateText(start),
+         Dato9: accessDateText(end),
         Dato12: record.plateId,
-         Dato17: [listText(record.partCodifiedSigns).join("\r\n"), line.split("|")[0]].filter(Boolean).join("\r\n\r\n") + (plant ? `\r\n${plant}` : ""),
+         Dato17: [listText(record.partCodifiedSigns).join("\r\n"), [line.split("|")[0], productArea].filter(Boolean).join("\r\n")].filter(Boolean).join("\r\n\r\n"),
         Dato18: record.partKitFlag === "Y" && record.sourcing === "EXTERNAL" ? partNumbers(record.partKitList).map((part) => `A_${model}_${part}`).join(",") : "",
         Dato19: partNumbers(record.additionalParts).map((part) => `A_${model}_${part}`).join("\r\n"),
-        DatoFecha: dateValue(start),
-        DatoFecha1: dateValue(end),
-         DescripcionTotal: [listText(record.partCodifiedSigns).join("\r\n"), line.split("|")[0]].filter(Boolean).join("\r\n\r\n") + (plant ? `\r\n${plant}` : ""),
+         DatoFecha: accessDateValue(start),
+         DatoFecha1: accessDateValue(end),
+          DescripcionTotal: [listText(record.partCodifiedSigns).join("\r\n"), [line.split("|")[0], productArea].filter(Boolean).join("\r\n")].filter(Boolean).join("\r\n\r\n"),
       };
     });
   });
@@ -143,13 +161,21 @@ export function toAccionaDesSecciones(records: AnyRow[], axCode: string, model: 
   const seen = new Set<string>();
   return records.filter((record) => record.ActiveSection === 1 && !seen.has(String(record.plateId)) && seen.add(String(record.plateId))).map((record) => {
     const section = String(record.plateId ?? "").split("_")[1] ?? "";
-    const navigation = String(record.navigation_path ?? "");
+     const navigation = String(record.navigation_path ?? "");
+     const applicability = String(record.sectionApplicabilityCleaned ?? "").split(/\r?\n/).filter(Boolean).map((line) => {
+       const [mtc, plantCode, plantLabel, start, end] = line.split("|");
+       const result = [`Applicability: ${mtc ?? ""}`];
+       if (plantCode) result.push(`Applicability: ${plantLabel ?? ""}`);
+       if (start) result.push(`From: ${accessDateText(start)}`);
+       if (end) result.push(`To: ${accessDateText(end)}`);
+       return result.join("\r\n");
+     }).join("\r\n\r\n");
     return {
       CD: epc,
       idAudatex: axCode,
       Modelo: model,
       Seccion: section,
-      Descripcion: ` Applicability: ${record.sectionApplicabilityCleaned ?? ""}\r\n\r\n${navigation}`,
+       Descripcion: ` ${applicability}\r\n\r\n${navigation}`,
        Realizada: performedFlag,
       Audatex: record.plateId,
       DesOriginal: null,
@@ -157,7 +183,7 @@ export function toAccionaDesSecciones(records: AnyRow[], axCode: string, model: 
       DesSeccion1: null,
       Filtrado: null,
       SeccionOriginal: null,
-      RutaFoto: `${imagesRoot.replace(/[\\/]+$/, "")}\\${record.illustrationFile ?? ""}`,
+       RutaFoto: `${imagesRoot.replace(/[\\/]+$/, "")}\\${String(record.illustrationFile ?? "").replace(/\.png$/i, ".jpeg")}`,
       ColorFondo: null,
       Estado: null,
     };
@@ -167,7 +193,9 @@ export function toAccionaDesSecciones(records: AnyRow[], axCode: string, model: 
 export function toAccionaFiltroSecciones(sections: AnyRow[], model: string): AnyRow[] {
   const seen = new Set<string>();
   let ordinal = 1;
-  const values = sections.map((section) => String(section.Descripcion ?? "").split(/\r?\n/).slice(2).find(Boolean)?.trim()).filter((section): section is string => Boolean(section));
+  const values = [...sections].sort((a, b) => String(a.navigation_path ?? a.Descripcion ?? "").localeCompare(String(b.navigation_path ?? b.Descripcion ?? "")))
+    .map((section) => String(section.navigation_path ?? String(section.Descripcion ?? "").split(/\r?\n/).find(Boolean) ?? "").split(/\r?\n/)[0].trim())
+    .filter((section): section is string => Boolean(section));
   return values.filter((section) => !seen.has(section) && (seen.add(section), true)).map((section) => ({ Modelo: model, Seccion: section, Ordinal: ordinal++ }));
 }
 
@@ -178,7 +206,14 @@ export function toAccionaDescriptions(records: AnyRow[], manufacturer: string, m
 
 export function toAccionaSustituciones(records: AnyRow[], replacements: AnyRow[], model: string, descriptions: Map<string, string>): AnyRow[] {
   const partNumbers = new Set(records.filter((record) => record.ActivePartsNumber === 1).map((record) => String(record.partNumber)));
-  return replacements.filter((replacement) => partNumbers.has(String(replacement.partNumberReplaced))).flatMap((replacement) => (replacement.target ?? []).map((target: AnyRow) => ({
+  const byPart = new Map(replacements.map((replacement) => [String(replacement.partNumberReplaced), replacement]));
+  const expand = (replacement: AnyRow, seen = new Set<string>()): AnyRow[] => {
+    const source = String(replacement.partNumberReplaced);
+    if (seen.has(source)) return [];
+    seen.add(source);
+    return (replacement.target ?? []).flatMap((target: AnyRow) => [target, ...(byPart.has(String(target.partNumber)) ? expand(byPart.get(String(target.partNumber))!, new Set(seen)) : [])]);
+  };
+  return replacements.filter((replacement) => partNumbers.has(String(replacement.partNumberReplaced))).flatMap((replacement) => expand(replacement).map((target: AnyRow) => ({
     partNoReferencia: replacement.partNumberReplaced,
     Aplicabilidad: null,
     Quantity: target.quantity ?? null,

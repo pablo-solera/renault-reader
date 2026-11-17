@@ -54,6 +54,7 @@ function parsePartsInput(body: any): PartsRequest {
     })() : undefined,
     previousRequestId: body?.previousRequestId ? required(body.previousRequestId, "previousRequestId") : undefined,
     illustrationsRequestId: body?.illustrationsRequestId ? required(body.illustrationsRequestId, "illustrationsRequestId") : undefined,
+    contextRequestId: body?.contextRequestId ? required(body.contextRequestId, "contextRequestId") : undefined,
     family: body?.family ? required(body.family, "family") : undefined,
     format: body?.format ? required(body.format, "format") : undefined,
     language: body?.language ? required(body.language, "language").toLowerCase() : undefined,
@@ -71,7 +72,11 @@ function parseModelInput(body: any): ModelExtractionRequest {
   const exports = body?.exports;
   if (exports != null && (typeof exports !== "object" || Object.keys(exports).some((key) => !PARTS_EXPORT_CODES.includes(key as any) || typeof exports[key] !== "boolean"))) throw new Error("exports must contain boolean Parts export codes");
   return {
-    axCode: normalizeAxCode(required(body?.axCode, "axCode")),
+    axCode: (() => {
+      const value = normalizeAxCode(required(body?.axCode, "axCode"));
+      if (!/^.{3,4}$/.test(value)) throw new Error("axCode must contain 3 to 4 characters");
+      return value;
+    })(),
     epc: body?.epc ? required(body.epc, "epc") : undefined,
     edition: normalizeEdition(required(body?.edition, "edition")),
     manufacturer: normalizeManufacturer(required(body?.manufacturer, "manufacturer")),

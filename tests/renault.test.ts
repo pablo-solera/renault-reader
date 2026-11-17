@@ -11,10 +11,11 @@ import { buildTreeIndex, navigationPath } from "../src/preprocessing/tree.js";
 import { accessHash, createCatalogHash } from "../src/preprocessing/hash.js";
 import { getAccionaConfig, extractionDatabaseName } from "../src/db/acciona.js";
 import { assertAllowedDatabase, ACCIONA_TABLES } from "../src/acciona/writers.js";
-import { cleanAccionaComparisonReferences, cleanAccionaComparisonSections, flattenPartsCatalog, flattenRepairTree, toAccionaComparisonSections, toAccionaPartsData, toAccionaReferences } from "../src/acciona/transform.js";
+import { cleanAccionaComparisonReferences, cleanAccionaComparisonSections, flattenPartsCatalog, flattenRepairTree, toAccionaComparisonSections, toAccionaDesSecciones, toAccionaPartsData, toAccionaReferences } from "../src/acciona/transform.js";
 import { compareReferences } from "../src/acciona/compare.js";
 import { compareTableRows } from "../src/acciona/compare.js";
 import { compareCatalogs } from "../src/preprocessing/compare-catalog.js";
+import { accessDateText, accessDateValue } from "../src/preprocessing/access-date.js";
 
 describe("Renault Labour helpers", () => {
   test("filters and sorts authorized partner families", () => {
@@ -165,8 +166,14 @@ describe("Renault Labour helpers", () => {
   });
 
   test("flattens Renault PR08 plates into Access catalog rows", () => {
-    const rows = flattenPartsCatalog([{ plateId: "X_1", nodes: ["N1"], applicability: [{ mtc: "X" }], lines: [{ partNumber: "P", applicability: [{ mtc: "X/SVA", startDate: "20260101", endDate: "20261231" }] }] }]);
-    expect(rows[0]).toMatchObject({ plateId: "X_1", nodes: "N1", sectionApplicability: "X", partNumber: "P", partsApplicability: "X/SVA|||20260101|20261231" });
+    const rows = flattenPartsCatalog([{ plateId: "X_1", nodes: ["N1"], applicability: [{ mtc: "X", manufacturingPlantCode: ["P1"], manufacturingPlantLabel: ["Plant"], startDate: "20260101", endDate: "20261231" }], lines: [{ partNumber: "P", applicability: [{ mtc: "X/SVA", startDate: "20260101", endDate: "20261231" }] }] }]);
+    expect(rows[0]).toMatchObject({ plateId: "X_1", nodes: "N1", sectionApplicability: "X|P1|Plant|20260101|20261231", partNumber: "P", partsApplicability: "X/SVA|||20260101|20261231" });
+  });
+
+  test("converts Access dates, including MOD month values", () => {
+    expect(accessDateText("20260102")).toBe("02/01/2026");
+    expect(accessDateText("MOD2601")).toBe("01/01/2026");
+    expect(accessDateValue("MOD2601")).toEqual(new Date(Date.UTC(2026, 0, 1)));
   });
 
   test("flattens nested REF03 repair trees", () => {
@@ -179,6 +186,13 @@ describe("Renault Labour helpers", () => {
     const rows = toAccionaReferences([{ ActivePartsNumber: 1, plateId: "X_123", hotSpotNumber: 4, genericPart: "G", partNumber: "P", partsApplicabilityCleaned: "X/SVA|A|(Plant)|20260102|20261203" }], "5208", "X1310");
     expect(rows[0]).toMatchObject({ IdModeloAudatex: "5208", IdSeccion: "123", Dato8: "02/01/2026", Dato9: "03/12/2026" });
     expect(rows[0].DatoFecha).toBeInstanceOf(Date);
+  });
+
+  test("renders Access section metadata and converts image extensions", () => {
+    const rows = toAccionaDesSecciones([{ ActiveSection: 1, plateId: "X_123", illustrationFile: "plate.png", sectionApplicabilityCleaned: "X|P1|Plant|20260101|20261231", navigation_path: "Body\r\n>> Door" }], "5208", "X1310", "0926", "\\images");
+    expect(rows[0].Descripcion).toContain("From: 01/01/2026");
+    expect(rows[0].Descripcion).toContain("To: 31/12/2026");
+    expect(rows[0].RutaFoto).toEndWith("plate.jpeg");
   });
 
   test("maps PR06 rows to PartsData without losing the source fields", () => {

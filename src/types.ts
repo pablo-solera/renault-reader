@@ -20,6 +20,10 @@ export type PartsRequest = {
   previousRequestId?: string;
   illustrationsRequestId?: string;
   treeRequestId?: string;
+  contextRequestId?: string;
+  criteriaRequestId?: string;
+  modelVehicleRequestId?: string;
+  powertrainRequestId?: string;
   family?: string;
   format?: string;
   language?: string;

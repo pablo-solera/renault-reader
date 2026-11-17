@@ -18,17 +18,18 @@ const imageEqual = (current: CatalogRecord, previous: CatalogRecord, currentImag
 
 const priorities: CompareType[] = ["", "MinorChange", "PartKitList", "AdditionalParts", "PartsDescription", "SectionApplicability", "Replacement", "PartsApplicability", "PartNumberNoFound", "PartNumberCode", "Illustration"];
 const priority = (type: CompareType) => priorities.indexOf(type);
+const same = (left: unknown, right: unknown) => String(left ?? "").localeCompare(String(right ?? ""), undefined, { sensitivity: "accent" }) === 0;
 
 function changeType(current: CatalogRecord, previous: CatalogRecord, currentImages: ImageHashes, previousImages: ImageHashes): CompareType {
   if (!imageEqual(current, previous, currentImages, previousImages)) return "Illustration";
-  if (hotspot(current) !== hotspot(previous)) return "PartNumberCode";
-  if (String(current.partNumber ?? "") !== String(previous.partNumber ?? "")) return "PartNumberNoFound";
-  if (String(current.partsApplicabilityCleanedComparison ?? "") !== String(previous.partsApplicabilityCleanedComparison ?? "") || String(current.partCodifiedSigns ?? "") !== String(previous.partCodifiedSigns ?? "")) return "PartsApplicability";
-  if (String(current.latestReplacementPart ?? "") !== String(previous.latestReplacementPart ?? "")) return "Replacement";
-  if (String(current.sectionApplicabilityCleanedComparison ?? "") !== String(previous.sectionApplicabilityCleanedComparison ?? "")) return "SectionApplicability";
-  if (String(current.designationEN ?? "") !== String(previous.designationEN ?? "")) return "PartsDescription";
-  if (String(current.additionalParts ?? "") !== String(previous.additionalParts ?? "")) return "AdditionalParts";
-  if (String(current.sourcing ?? "") === "External" && String(current.partKitList ?? "") !== String(previous.partKitList ?? "")) return "PartKitList";
+  if (!same(hotspot(current), hotspot(previous))) return "PartNumberCode";
+  if (!same(current.partNumber, previous.partNumber)) return "PartNumberNoFound";
+  if (!same(current.partsApplicabilityCleanedComparison, previous.partsApplicabilityCleanedComparison) || !same(current.partCodifiedSigns, previous.partCodifiedSigns)) return "PartsApplicability";
+  if (!same(current.latestReplacementPart, previous.latestReplacementPart)) return "Replacement";
+  if (!same(current.sectionApplicabilityCleanedComparison, previous.sectionApplicabilityCleanedComparison)) return "SectionApplicability";
+  if (!same(current.designationEN, previous.designationEN)) return "PartsDescription";
+  if (!same(current.additionalParts, previous.additionalParts)) return "AdditionalParts";
+  if (same(String(current.sourcing).toLowerCase(), "external") && same(String(previous.sourcing).toLowerCase(), "external") && !same(current.partKitList, previous.partKitList)) return "PartKitList";
   return "";
 }
 
@@ -63,18 +64,23 @@ export function compareCatalogs(currentInput: CatalogRecord[], previousInput: Ca
         if (!best || priority(type) < priority(bestType)) { best = candidate; bestType = type; }
       }
       if (!best) continue;
-      if (bestType === "PartNumberNoFound") {
+       if (bestType === "PartNumberCode" && now.some((candidate) => candidate !== row && hotspot(candidate) === hotspot(row))) bestType = "PartNumberNoFound";
+       if (bestType === "PartNumberNoFound") {
         row.TypeCompare = bestType;
         row.Compare = 0;
         continue;
-      }
+       }
       row.Compare = link;
       row.TypeCompare = bestType;
       best.Compare = link;
       best.TypeCompare = bestType;
-      link++;
-    }
-  }
+       link++;
+     }
+     const illustrations = current.filter((candidate) => active(candidate) && section(candidate) === plateId && candidate.TypeCompare === "Illustration");
+     if (illustrations.length) {
+       for (const candidate of current.filter((item) => active(item) && section(item) === plateId && !item.TypeCompare)) candidate.TypeCompare = "Illustration";
+     }
+   }
   for (const row of current.filter((item) => active(item) && item.Compare === 0)) row.TypeCompare = newSections.includes(section(row)) ? "NewSection" : "NewPartNumber";
   for (const row of previous.filter((item) => active(item) && item.Compare === 0)) row.TypeCompare = deletedSections.includes(section(row)) ? "DeletedSection" : "DeletedPartNumber";
   return { current, previous, newRows: current.filter((row) => active(row) && row.Compare === 0), deletedRows: previous.filter((row) => active(row) && row.Compare === 0), newSections, deletedSections };

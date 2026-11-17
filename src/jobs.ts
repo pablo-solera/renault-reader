@@ -9,6 +9,7 @@ import { compareCatalogs } from "./preprocessing/compare-catalog.js";
 import type { JobState, LabourRequest, PartsRequest } from "./types.js";
 import type { ModelExtractionRequest } from "./types.js";
 import { deriveFamilies, selectPowertrain } from "./powertrain.js";
+import { preprocessRenaultCatalog } from "./acciona/transform.js";
 import { lockKey, partsLockKey, queueNames, stateKey } from "./redis-keys.js";
 
 export const labourQueue = new Queue(queueNames.labours, { connection: redis });
@@ -238,7 +239,7 @@ async function processParts(job: Job<{ requestId: string; input: PartsRequest }>
   const parsed = await parsePartsArchive(input.exportType, bytes);
   const effectiveEpc = input.epc ?? currentEpc();
   if (input.exportType === "REF04") parsed.records = preprocessModelVehicleRecords(parsed.records, input.modelIds, input.manufacturer);
-  if (input.exportType === "PR08") {
+   if (input.exportType === "PR08") {
     await updateState(requestId, { status: "uploading", stage: "preprocessing_catalog" });
     let treeRecords: unknown[] = [];
     if (input.treeRequestId) {
@@ -248,7 +249,21 @@ async function processParts(job: Job<{ requestId: string; input: PartsRequest }>
         treeRecords = Array.isArray(tree.records) ? tree.records : [];
       }
     }
-    parsed.records = preprocessCatalogRecords(parsed.records, treeRecords, input.language ?? "EN");
+     const context = input.contextRequestId ? await getState(input.contextRequestId) : undefined;
+     if (!context?.children?.REF02 || !context.children.REF04 || !context.children.REF05 || !context.children.REF03) {
+       throw new Error("PR08 requires a completed model context with REF02, REF03, REF04 and REF05");
+     }
+     const readStructured = async (childKey: string) => {
+       const child = context.children?.[childKey];
+       if (!child) throw new Error(`Missing PR08 context child ${childKey}`);
+       const state = await getState(child.requestId);
+       if (!state?.structuredKey) throw new Error(`Missing PR08 context output ${childKey}`);
+       return JSON.parse(new TextDecoder().decode(await downloadBytes(state.structuredKey))) as { records: Record<string, unknown>[] };
+     };
+     const [criteria, models, powertrain, tree] = await Promise.all([
+       readStructured("REF02"), readStructured("REF04"), readStructured("REF05"), readStructured("REF03"),
+     ]);
+     parsed.records = preprocessRenaultCatalog(parsed.records as Record<string, unknown>[], criteria.records, selectPowertrain(powertrain.records, models.records) as Record<string, unknown>[], models.records, tree.records);
   }
   const structuredKey = buildPartsDerivedKey(requestId, input.exportType, "structured", baseKey);
   let imageComparison: ReturnType<typeof compareImageHashes> | undefined;
@@ -316,7 +331,7 @@ async function processModel(job: Job<{ requestId: string; input: ModelExtraction
     await updateState(requestId, { children });
     return completed;
   };
-  const base = { ...input, language: input.language ?? "", format: input.format };
+   const base = { ...input, language: input.language ?? "", format: input.format, contextRequestId: requestId };
   await updateState(requestId, { status: "discovering", stage: "family_exports", children });
   const ref04 = await runChild("REF04", { ...base, exportType: "REF04", modelIds: input.modelIds });
   const ref05 = await runChild("REF05", { ...base, exportType: "REF05", modelIds: input.modelIds });
