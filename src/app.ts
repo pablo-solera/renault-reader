@@ -2,12 +2,10 @@ import express, { type Request, type Response } from "express";
 import { signedDownload } from "./storage.js";
 import { discoverExportOptions, discoverLabourOptions, gigyaLogin, RenaultClient } from "./renault.js";
 import { config, getRenaultCredentials } from "./config.js";
-import { enqueueLabour, enqueueModel, enqueueParts, getState } from "./jobs.js";
-import { PARTS_EXPORT_CODES, type LabourRequest, type ModelExtractionRequest, type PartsRequest } from "./types.js";
+import { enqueueLabour, enqueueParts, getState } from "./jobs.js";
+import { PARTS_EXPORT_CODES, type LabourRequest, type PartsRequest } from "./types.js";
 import { normalizeAxCode, normalizeEdition, normalizeManufacturer } from "./parts.js";
 import { openapi } from "./openapi.js";
-import { buildAccionaDataset } from "./acciona/load-model.js";
-import { loadAccionaDataset } from "./acciona/load.js";
 
 export const app = express();
 app.disable("x-powered-by");
@@ -66,32 +64,6 @@ function parsePartsInput(body: any): PartsRequest {
   return input;
 }
 
-function parseModelInput(body: any): ModelExtractionRequest {
-  rejectCredentials(body);
-  if (!Array.isArray(body?.modelIds) || body.modelIds.length === 0 || body.modelIds.some((v: unknown) => typeof v !== "string" || !v.trim())) throw new Error("modelIds must be a non-empty array of strings");
-  const exports = body?.exports;
-  if (exports != null && (typeof exports !== "object" || Object.keys(exports).some((key) => !PARTS_EXPORT_CODES.includes(key as any) || typeof exports[key] !== "boolean"))) throw new Error("exports must contain boolean Parts export codes");
-  return {
-    axCode: (() => {
-      const value = normalizeAxCode(required(body?.axCode, "axCode"));
-      if (!/^.{3,4}$/.test(value)) throw new Error("axCode must contain 3 to 4 characters");
-      return value;
-    })(),
-    epc: body?.epc ? required(body.epc, "epc") : undefined,
-    edition: normalizeEdition(required(body?.edition, "edition")),
-    manufacturer: normalizeManufacturer(required(body?.manufacturer, "manufacturer")),
-    description: required(body?.description, "description"),
-    family: required(body?.family, "family"),
-    modelIds: body.modelIds.map((v: string) => v.trim()),
-    range: required(body?.range, "range"),
-    language: body?.language ? required(body.language, "language").toLowerCase() : undefined,
-    format: body?.format ? required(body.format, "format") : undefined,
-    exports,
-    resumeRequestId: body?.resumeRequestId ? required(body.resumeRequestId, "resumeRequestId") : undefined,
-    previousRequestId: body?.previousRequestId ? required(body.previousRequestId, "previousRequestId") : undefined,
-    referenceRequestId: body?.referenceRequestId ? required(body.referenceRequestId, "referenceRequestId") : undefined,
-  };
-}
 
 app.get("/health", (_request, response) => response.json({ status: "ok" }));
 app.get("/openapi.json", (_request, response) => response.json(openapi));
@@ -177,41 +149,6 @@ app.get("/parts/:requestId/download", async (request: Request, response: Respons
   if (!state) return response.status(404).json({ error: "Parts request not found" });
   if (state.status !== "completed" || !state.objectKey) return response.status(409).json({ error: "Parts file is not ready", status: state.status });
   return response.redirect(307, await signedDownload(state.objectKey));
-});
-
-app.post("/models", async (request: Request, response: Response) => {
-  try {
-    const state = await enqueueModel(parseModelInput(request.body));
-    response.status(202).json({ requestId: state.requestId, status: state.status, statusUrl: `/models/${state.requestId}` });
-  } catch (error) {
-    response.status(400).json({ error: error instanceof Error ? error.message : "Invalid model extraction request" });
-  }
-});
-
-app.get("/models/:requestId", async (request: Request, response: Response) => {
-  const state = await getState(String(request.params.requestId));
-  if (!state) return response.status(404).json({ error: "Model extraction not found" });
-  return response.json({ ...state, downloadUrl: state.status === "completed" && state.objectKey ? `/models/${state.requestId}/download` : undefined });
-});
-
-app.get("/models/:requestId/download", async (request: Request, response: Response) => {
-  const state = await getState(String(request.params.requestId));
-  if (!state) return response.status(404).json({ error: "Model extraction not found" });
-  if (state.status !== "completed" || !state.objectKey) return response.status(409).json({ error: "Model report is not ready", status: state.status });
-  return response.redirect(307, await signedDownload(state.objectKey));
-});
-
-app.post("/models/:requestId/acciona", async (request: Request, response: Response) => {
-  try {
-    const requestId = String(request.params.requestId);
-    const state = await getState(requestId);
-    if (!state) return response.status(404).json({ error: "Model extraction not found" });
-    if (state.status !== "completed") return response.status(409).json({ error: "Model extraction is not ready", status: state.status });
-    const result = await loadAccionaDataset(await buildAccionaDataset(requestId), { targetDatabase: request.body?.targetDatabase, confirmProduction: request.body?.confirmProduction === true, dryRun: request.body?.dryRun === true, tables: Array.isArray(request.body?.tables) ? request.body.tables : undefined });
-    return response.json({ requestId, target: request.body?.targetDatabase ?? "_MOK_MOK", result });
-  } catch (error) {
-    return response.status(400).json({ error: error instanceof Error ? error.message : "Acciona load failed" });
-  }
 });
 
 app.use((error: unknown, _request: Request, response: Response, _next: unknown) => response.status(500).json({ error: error instanceof Error ? error.message : "Internal server error" }));

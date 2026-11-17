@@ -31,22 +31,6 @@ export type PartsRequest = {
   publishedAfter?: string;
 };
 
-export type ModelExtractionRequest = {
-  axCode: string;
-  epc?: string;
-  edition: string;
-  manufacturer: string;
-  description: string;
-  family: string;
-  modelIds: string[];
-  range: string;
-  language?: string;
-  format?: string;
-  exports?: Partial<Record<PartsExportCode, boolean>>;
-  resumeRequestId?: string;
-  previousRequestId?: string;
-  referenceRequestId?: string;
-};
 
 export type JobStatus = "queued" | "authenticating" | "discovering" | "validating" | "checking_remote" | "submitted" | "waiting" | "downloading" | "uploading" | "completed" | "failed";
 
@@ -69,8 +53,6 @@ export type JobState = {
   createdAt: string;
   updatedAt: string;
   children?: Record<string, { requestId: string; status?: JobStatus }>;
-  excelObjectKey?: string;
-  modelInput?: ModelExtractionRequest;
 };
 
 export type RenaultQuery = {

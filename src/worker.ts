@@ -1,4 +1,4 @@
-import { createLabourWorker, createModelsWorker, createPartsWorker, markFailed, releasePartsLock } from "./jobs.js";
+import { createLabourWorker, createPartsWorker, markFailed, releasePartsLock } from "./jobs.js";
 import { getRenaultCredentials } from "./config.js";
 import { ensureBucket } from "./storage.js";
 
@@ -6,7 +6,6 @@ getRenaultCredentials();
 await ensureBucket();
 const worker = createLabourWorker();
 const partsWorker = createPartsWorker();
-const modelsWorker = createModelsWorker();
 worker.on("completed", (job) => console.log(`Labour job ${job.id} completed`));
 worker.on("failed", async (job, error) => {
   if (job?.data?.requestId) await markFailed(job.data.requestId, error);
@@ -20,9 +19,3 @@ partsWorker.on("failed", async (job, error) => {
   console.error(`Parts job ${job?.id ?? "unknown"} failed: ${error.message}`);
 });
 console.log("Parts worker started");
-modelsWorker.on("completed", (job) => console.log(`Models job ${job.id} completed`));
-modelsWorker.on("failed", async (job, error) => {
-  if (job?.data?.requestId) await markFailed(job.data.requestId, error);
-  console.error(`Models job ${job?.id ?? "unknown"} failed: ${error.message}`);
-});
-console.log("Models worker started");

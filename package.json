@@ -10,11 +10,6 @@
     "dev": "bun --watch src/index.ts",
     "start": "bun src/index.ts",
     "worker": "bun src/worker.ts",
-    "acciona:load": "bun src/acciona/load-model.ts",
-    "acciona:images": "bun src/acciona/publish-images.ts",
-    "acciona:compare": "bun src/acciona/compare-model.ts",
-    "acciona:verify-images": "bun src/acciona/verify-images.ts",
-    "acciona:compare-edition": "bun src/acciona/compare-edition.ts",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
@@ -23,17 +18,14 @@
     "@aws-sdk/s3-request-presigner": "3.1170.0",
     "@smithy/node-http-handler": "4.14.2",
     "bullmq": "6.7.7",
-    "exceljs": "4.4.0",
     "express": "5.3.0",
     "fflate": "0.8.3",
     "ioredis": "6.0.0",
-    "mssql": "12.7.14",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/bun": "1.4.4",
     "@types/express": "5.0.6",
-    "@types/mssql": "12.3.0",
     "@types/node": "24.19.2",
     "typescript": "7.0.2"
   }

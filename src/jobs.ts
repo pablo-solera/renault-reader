@@ -4,17 +4,12 @@ import { config, getRenaultCredentials } from "./config.js";
 import { redis } from "./redis.js";
 import { buildExportPayload, buildFileName, buildPartsFileName, buildLabourPayload, discoverExportOptions, discoverLabourOptions, gigyaLogin, RenaultClient } from "./renault.js";
 import { S3UploadError, downloadBytes, uploadBytes, uploadObject } from "./storage.js";
-import { buildReportZip, buildTapvWorkbook, compareImageHashes, currentEpc, epcFromDate, normalizeAxCode, normalizeDescription, normalizeEdition, normalizeManufacturer, parsePartsArchive, preprocessCatalogRecords, preprocessModelVehicleRecords, structuredBytes } from "./parts.js";
-import { compareCatalogs } from "./preprocessing/compare-catalog.js";
+import { normalizeAxCode, normalizeDescription, normalizeEdition, normalizeManufacturer } from "./parts.js";
 import type { JobState, LabourRequest, PartsRequest } from "./types.js";
-import type { ModelExtractionRequest } from "./types.js";
-import { deriveFamilies, selectPowertrain } from "./powertrain.js";
-import { preprocessRenaultCatalog } from "./acciona/transform.js";
 import { lockKey, partsLockKey, queueNames, stateKey } from "./redis-keys.js";
 
 export const labourQueue = new Queue(queueNames.labours, { connection: redis });
 export const partsQueue = new Queue(queueNames.parts, { connection: redis });
-export const modelsQueue = new Queue(queueNames.models, { connection: redis });
 
 
 export async function releasePartsLock(input: PartsRequest) {
@@ -106,20 +101,6 @@ export async function enqueueParts(input: PartsRequest) {
     return state;
   } catch (error) {
     await redis.del(lock, stateKey(requestId));
-    throw error;
-  }
-}
-
-export async function enqueueModel(input: ModelExtractionRequest) {
-  const requestId = randomUUID();
-  const now = new Date().toISOString();
-  const state: JobState = { requestId, status: "queued", stage: "queued", progress: 0, createdAt: now, updatedAt: now, children: {}, modelInput: input };
-  await redis.set(stateKey(requestId), JSON.stringify(state), "EX", config.stateTtlSeconds);
-  try {
-    await modelsQueue.add("extract", { requestId, input }, { jobId: requestId, removeOnComplete: true, removeOnFail: 100 });
-    return state;
-  } catch (error) {
-    await redis.del(stateKey(requestId));
     throw error;
   }
 }
@@ -231,133 +212,11 @@ async function processParts(job: Job<{ requestId: string; input: PartsRequest }>
   const downloaded = await client.download(downloadUrl);
   const bytes = new Uint8Array(await downloaded.arrayBuffer());
   if (!bytes.length) throw new Error("Renault returned an empty download");
-  const baseKey = buildPartsBaseKey(input);
   const objectKey = buildPartsObjectKey(requestId, input.exportType, fileName, input);
   await updateState(requestId, { status: "uploading", stage: "s3_upload", progress: null });
   await uploadBytes(objectKey, bytes, downloaded.headers.get("content-type") ?? "application/zip");
-  await updateState(requestId, { status: "uploading", stage: "parsing_archive", objectKey });
-  const parsed = await parsePartsArchive(input.exportType, bytes);
-  const effectiveEpc = input.epc ?? currentEpc();
-  if (input.exportType === "REF04") parsed.records = preprocessModelVehicleRecords(parsed.records, input.modelIds, input.manufacturer);
-   if (input.exportType === "PR08") {
-    await updateState(requestId, { status: "uploading", stage: "preprocessing_catalog" });
-    let treeRecords: unknown[] = [];
-    if (input.treeRequestId) {
-      const treeState = await getState(input.treeRequestId);
-      if (treeState?.structuredKey) {
-        const tree = JSON.parse(new TextDecoder().decode(await downloadBytes(treeState.structuredKey)));
-        treeRecords = Array.isArray(tree.records) ? tree.records : [];
-      }
-    }
-     const context = input.contextRequestId ? await getState(input.contextRequestId) : undefined;
-     if (!context?.children?.REF02 || !context.children.REF04 || !context.children.REF05 || !context.children.REF03) {
-       throw new Error("PR08 requires a completed model context with REF02, REF03, REF04 and REF05");
-     }
-     const readStructured = async (childKey: string) => {
-       const child = context.children?.[childKey];
-       if (!child) throw new Error(`Missing PR08 context child ${childKey}`);
-       const state = await getState(child.requestId);
-       if (!state?.structuredKey) throw new Error(`Missing PR08 context output ${childKey}`);
-       return JSON.parse(new TextDecoder().decode(await downloadBytes(state.structuredKey))) as { records: Record<string, unknown>[] };
-     };
-     const [criteria, models, powertrain, tree] = await Promise.all([
-       readStructured("REF02"), readStructured("REF04"), readStructured("REF05"), readStructured("REF03"),
-     ]);
-     parsed.records = preprocessRenaultCatalog(parsed.records as Record<string, unknown>[], criteria.records, selectPowertrain(powertrain.records, models.records) as Record<string, unknown>[], models.records, tree.records);
-  }
-  const structuredKey = buildPartsDerivedKey(requestId, input.exportType, "structured", baseKey);
-  let imageComparison: ReturnType<typeof compareImageHashes> | undefined;
-  if (input.exportType === "PR03" && input.previousRequestId) {
-    const previousState = await getState(input.previousRequestId);
-    const previousKey = previousState?.structuredKey ?? buildPartsDerivedKey(input.previousRequestId, "PR03", "structured", baseKey);
-    const previousParsed = JSON.parse(new TextDecoder().decode(await downloadBytes(previousKey)));
-    imageComparison = compareImageHashes(parsed, previousParsed);
-  }
-  let catalogComparison: ReturnType<typeof compareCatalogs> | undefined;
-  if (input.exportType === "PR08" && input.previousRequestId) {
-    const previousState = await getState(input.previousRequestId);
-    const previousKey = previousState?.structuredKey ?? buildPartsDerivedKey(input.previousRequestId, "PR08", "structured", baseKey);
-    const previousParsed = JSON.parse(new TextDecoder().decode(await downloadBytes(previousKey)));
-    catalogComparison = compareCatalogs(parsed.records as Record<string, any>[], Array.isArray(previousParsed.records) ? previousParsed.records as Record<string, any>[] : []);
-  }
-  const structured = structuredBytes(parsed, { requestId, axCode: input.axCode, epc: effectiveEpc, manufacturer: input.manufacturer, description: input.description, edition: input.edition, family: input.family, modelIds: input.modelIds, range: input.range, previousRequestId: input.previousRequestId, imageComparison, catalogComparison });
-  await uploadBytes(structuredKey, structured, "application/json");
-
-  await updateState(requestId, { status: "completed", stage: "completed", progress: 100, objectKey, rawObjectKey: objectKey, structuredKey, fileName });
-  return { objectKey, fileName, structuredKey };
-}
-
-async function waitForChild(requestId: string) {
-  const deadline = Date.now() + config.jobTimeoutMs;
-  while (Date.now() < deadline) {
-    const state = await getState(requestId);
-    if (state?.status === "completed") return state;
-    if (state?.status === "failed") throw new Error(`Child Parts job ${requestId} failed: ${state.error ?? "unknown error"}`);
-    await wait(config.pollIntervalMs);
-  }
-  throw new Error(`Timed out waiting for Parts job ${requestId}`);
-}
-
-async function processModel(job: Job<{ requestId: string; input: ModelExtractionRequest }>) {
-  const { requestId, input } = job.data;
-  const enabled = (code: string) => input.exports?.[code as keyof typeof input.exports] !== false;
-  const validateComparisonRequest = async (comparisonRequestId: string, kind: "previous" | "reference") => {
-    const comparison = await getState(comparisonRequestId);
-    if (comparison?.status !== "completed" || !comparison.modelInput) throw new Error(`${kind} comparison request must be completed and contain modelInput`);
-    const other = comparison.modelInput;
-    if (other.manufacturer !== input.manufacturer || other.family !== input.family || other.axCode !== input.axCode) throw new Error(`${kind} comparison request belongs to a different model`);
-    const inputEpc = input.epc ?? epcFromDate(new Date());
-    const otherEpc = other.epc ?? epcFromDate(comparison.createdAt);
-    if (kind === "previous" && inputEpc === otherEpc) throw new Error("previousRequestId must use a different EPC");
-    if (kind === "reference" && inputEpc !== otherEpc) throw new Error("referenceRequestId must use the same EPC");
-  };
-  if (input.previousRequestId) await validateComparisonRequest(input.previousRequestId, "previous");
-  if (input.referenceRequestId) await validateComparisonRequest(input.referenceRequestId, "reference");
-  const children: Record<string, { requestId: string; status?: JobState["status"] }> = {};
-  const previous = input.resumeRequestId ? await getState(input.resumeRequestId) : undefined;
-  const runChild = async (key: string, child: PartsRequest) => {
-    const previousChild = previous?.children?.[key];
-    if (previousChild?.status === "completed") {
-      children[key] = previousChild;
-      await updateState(requestId, { stage: `reusing_${key}`, children });
-      const state = await getState(previousChild.requestId);
-      if (state?.status === "completed") return state;
-    }
-    const childState = await enqueueParts(child);
-    children[key] = { requestId: childState.requestId, status: childState.status };
-    await updateState(requestId, { stage: `waiting_${key}`, children, progress: null });
-    const completed = await waitForChild(childState.requestId);
-    children[key].status = completed.status;
-    await updateState(requestId, { children });
-    return completed;
-  };
-   const base = { ...input, language: input.language ?? "", format: input.format, contextRequestId: requestId };
-  await updateState(requestId, { status: "discovering", stage: "family_exports", children });
-  const ref04 = await runChild("REF04", { ...base, exportType: "REF04", modelIds: input.modelIds });
-  const ref05 = await runChild("REF05", { ...base, exportType: "REF05", modelIds: input.modelIds });
-  for (const code of ["REF01", "REF02", "REF03", "PR05", "PR06"] as const) {
-    if (enabled(code)) await runChild(code, { ...base, exportType: code, modelIds: input.modelIds });
-  }
-  const ref04Parsed = JSON.parse(new TextDecoder().decode(await downloadBytes(ref04.structuredKey!)));
-  const ref05Parsed = JSON.parse(new TextDecoder().decode(await downloadBytes(ref05.structuredKey!)));
-  const ref03 = children.REF03 ? await getState(children.REF03.requestId) : undefined;
-  const models = Array.isArray(ref04Parsed.records) ? ref04Parsed.records : [];
-  const selected = selectPowertrain(Array.isArray(ref05Parsed.records) ? ref05Parsed.records : [], models);
-  const families = deriveFamilies(selected);
-  const familyCodes = ["PR08", "PR03"] as const;
-  for (const code of familyCodes) {
-    if (!enabled(code)) continue;
-    for (const family of families) await runChild(`${code}_${family}`, { ...base, exportType: code, family, treeRequestId: code === "PR08" ? ref03?.requestId : undefined });
-  }
-  await updateState(requestId, { status: "uploading", stage: "generating_tapv_report", children });
-  const workbook = await buildTapvWorkbook(selected);
-  const structured = new TextEncoder().encode(JSON.stringify({ requestId, input, families, records: selected, children }));
-  const reportZip = buildReportZip(`Powertrain_${input.axCode}.xlsx`, workbook, structured);
-  const baseKey = buildPartsBaseKey({ ...base, exportType: "REF05" });
-  const reportKey = buildPartsReportKey(requestId, "MODEL", `Powertrain_${input.axCode}`, baseKey);
-  await uploadBytes(reportKey, reportZip, "application/zip");
-  await updateState(requestId, { status: "completed", stage: "completed", progress: 100, objectKey: reportKey, excelObjectKey: reportKey, children });
-  return { objectKey: reportKey };
+  await updateState(requestId, { status: "completed", stage: "completed", progress: 100, objectKey, rawObjectKey: objectKey, fileName });
+  return { objectKey, fileName };
 }
 
 export function createLabourWorker() {
@@ -366,10 +225,6 @@ export function createLabourWorker() {
 
 export function createPartsWorker() {
   return new Worker(queueNames.parts, processParts, { connection: redis, concurrency: config.jobConcurrency, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
-}
-
-export function createModelsWorker() {
-  return new Worker(queueNames.models, processModel, { connection: redis, concurrency: 1, lockDuration: config.workerLockDurationMs, stalledInterval: config.workerStalledIntervalMs, maxStalledCount: 1 });
 }
 
 export async function markFailed(requestId: string, error: unknown) {

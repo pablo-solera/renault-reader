@@ -10,7 +10,6 @@ export const openapi = {
     { name: "System", description: "Estado del servicio" },
     { name: "Labours", description: "Exportaciones Labour Times TM01" },
      { name: "Parts", description: "Exportaciones de piezas y referencias de ASMDOR" },
-     { name: "Models", description: "Procesamiento completo de modelos y generación TAPV" },
   ],
   paths: {
     "/health": {
@@ -94,33 +93,6 @@ export const openapi = {
         responses: { "307": { description: "Redirección temporal a S3/MinIO" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "El archivo todavía no está disponible" } },
       },
     },
-    "/models": {
-      post: {
-        tags: ["Models"], summary: "Encola el procesamiento completo de un modelo",
-        requestBody: { required: true, content: { "application/json": { schema: { $ref: "#/components/schemas/ModelExtractionRequest" } } } },
-        responses: { "202": { description: "Procesamiento encolado", content: { "application/json": { schema: { $ref: "#/components/schemas/QueuedResponse" } } } }, "400": { $ref: "#/components/responses/BadRequest" } },
-      },
-    },
-    "/models/{requestId}": {
-      get: {
-        tags: ["Models"], summary: "Consulta el procesamiento de un modelo", parameters: [{ $ref: "#/components/parameters/RequestId" }],
-        responses: { "200": { description: "Estado del procesamiento", content: { "application/json": { schema: { $ref: "#/components/schemas/LabourStatus" } } } }, "404": { $ref: "#/components/responses/NotFound" } },
-      },
-    },
-    "/models/{requestId}/download": {
-      get: {
-        tags: ["Models"], summary: "Descarga el informe TAPV", parameters: [{ $ref: "#/components/parameters/RequestId" }],
-        responses: { "307": { description: "Redirección temporal a S3/MinIO" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "El informe todavía no está disponible" } },
-      },
-    },
-    "/models/{requestId}/acciona": {
-      post: {
-         tags: ["Models"], summary: "Carga un modelo completado en Acciona",
-         parameters: [{ $ref: "#/components/parameters/RequestId" }],
-         requestBody: { required: false, content: { "application/json": { schema: { $ref: "#/components/schemas/AccionaLoadRequest" } } } },
-        responses: { "200": { description: "Carga completada" }, "400": { $ref: "#/components/responses/BadRequest" }, "404": { $ref: "#/components/responses/NotFound" }, "409": { description: "El modelo todavía no está listo" } },
-      },
-    },
   },
   components: {
     parameters: {
@@ -154,11 +126,6 @@ export const openapi = {
       PartsRequest: {
         type: "object", required: ["exportType", "range"], properties: {
           exportType: { type: "string", enum: ["REF01", "REF02", "REF03", "REF04", "REF05", "PR03", "PR05", "PR06", "PR08"] }, axCode: { type: "string", example: "5208" }, epc: { type: "string", example: "0826" }, manufacturer: { type: "string", example: "DACIA" }, description: { type: "string", example: "Bigster (SVA)" }, edition: { type: "string", pattern: "^\\d{2}/\\d$", example: "02/0" }, modelIds: { type: "array", items: { type: "string" }, description: "Modelos REF04 seleccionados; si se omite se procesan todos" }, family: { type: "string", example: "X1310" }, format: { type: "string", example: "zip" }, language: { type: "string", example: "en" }, range: { type: "string", example: "active" }, publishedAfter: { type: "string", format: "date" }, previousRequestId: { type: "string", format: "uuid", description: "RequestId de la edición REF05 anterior para generar hojas New/Deleted" }, illustrationsRequestId: { type: "string", format: "uuid" },
-        },
-      },
-      ModelExtractionRequest: {
-        type: "object", required: ["axCode", "edition", "manufacturer", "description", "family", "modelIds", "range"], properties: {
-          axCode: { type: "string", example: "5208" }, epc: { type: "string", example: "0826" }, edition: { type: "string", pattern: "^\\d{2}/\\d$", example: "02/0" }, manufacturer: { type: "string", example: "DACIA" }, description: { type: "string", example: "Bigster (SVA)" }, family: { type: "string", example: "X1310" }, modelIds: { type: "array", minItems: 1, items: { type: "string" } }, range: { type: "string", example: "active" }, language: { type: "string", example: "en" }, format: { type: "string", example: "zip" }, exports: { type: "object", additionalProperties: { type: "boolean" } }, previousRequestId: { type: "string", format: "uuid" }, referenceRequestId: { type: "string", format: "uuid" },
         },
       },
       LabourRequest: {
