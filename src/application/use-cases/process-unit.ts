@@ -84,8 +84,10 @@ export async function processUnitUseCase(data: RequestJob, dependencies: Process
     }
     const progress = requestProgress(units, current.progress);
     if (index + 1 < units.length) {
+      // The finished unit is persisted before the next job is queued: that job reads the state as soon as it starts.
+      await dependencies.state.update(requestId, { status: "running", stage: `${unit.unit}:completed`, progress, units, families, familiesPending });
       const queueJobId = await dependencies.queue.next({ requestId, runId, index: index + 1 });
-      await dependencies.state.update(requestId, { status: "running", stage: `${unit.unit}:completed`, progress, units, families, familiesPending, queueJobId });
+      await dependencies.state.update(requestId, { queueJobId });
       return { kind: "unit", unit: unit.unit, next: units[index + 1]!.unit };
     }
     await dependencies.state.update(requestId, { status: "completed", stage: "completed", progress: 100, units, families, familiesPending, error: undefined, errorCode: undefined });

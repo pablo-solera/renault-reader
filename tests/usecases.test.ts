@@ -119,6 +119,15 @@ describe("processing", () => {
     expect(w.owners.size).toBe(0);
   });
 
+  test("persists the finished unit before the next job can start (the next job reads the state at once)", async () => {
+    const w = world();
+    const requestId = await w.enqueue("parts", partsBody);
+    const seen: string[][] = [];
+    await w.drain({ queue: { next: async job => { seen.push(w.states.get(requestId)!.units.map(unit => unit.status)); return w.queue.enqueue(job); } } });
+    expect(seen[0]!.slice(0, 2)).toEqual(["completed", "pending"]);
+    expect(seen[1]!.slice(0, 3)).toEqual(["completed", "completed", "pending"]);
+  });
+
   test("disabling PR08 and PR03 skips the family step", async () => {
     const w = world();
     const requestId = await w.enqueue("parts", { ...partsBody, selection: { ...partsBody.selection, exports: { ...partsBody.selection.exports, PR08: false, PR03: false } } });
