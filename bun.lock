@@ -7,7 +7,7 @@
       "dependencies": {
         "@aws-sdk/client-s3": "3.1170.0",
         "@aws-sdk/s3-request-presigner": "3.1170.0",
-        "@pablosla/core-reader": "0.6.0",
+        "@pablosla/core-reader": "0.6.1",
         "@smithy/fetch-http-handler": "5.8.1",
         "bullmq": "6.7.7",
         "express": "5.3.0",
@@ -81,7 +81,7 @@
 
     "@msgpackr-extract/msgpackr-extract-win32-x64": ["@msgpackr-extract/msgpackr-extract-win32-x64@3.0.7", "", { "os": "win32", "cpu": "x64" }, "sha512-PRBiOqK4mcR0rvm6nybO7pSOYRR2Zza0+43UK2IvbVGelzMqZViiZJmOWGuWOX678QKESO6YrHx36z43nSS6iQ=="],
 
-    "@pablosla/core-reader": ["@pablosla/core-reader@0.6.0", "", { "dependencies": { "@asteasolutions/zod-to-openapi": "9.1.0" }, "peerDependencies": { "@aws-sdk/client-s3": "^3.1148.0", "@aws-sdk/s3-request-presigner": "^3.1148.0", "@smithy/fetch-http-handler": "^5.8.0", "archiver": "^8.0.0", "bullmq": "^6.3.12", "express": "^5.2.1", "ioredis": "^6.0.0", "mssql": "^12.7.9", "zod": "^4.6.5" }, "optionalPeers": ["@aws-sdk/client-s3", "@aws-sdk/s3-request-presigner", "@smithy/fetch-http-handler", "archiver", "bullmq", "ioredis", "mssql"] }, "sha512-Infm3oiNnOv41iJ6vp28slyXecRytGjje21blJH25QdnhtqvoJTIbojv8XX3SHOd4GsUdWEP7r+rIHQWWVT0rQ=="],
+    "@pablosla/core-reader": ["@pablosla/core-reader@0.6.1", "", { "dependencies": { "@asteasolutions/zod-to-openapi": "9.1.0" }, "peerDependencies": { "@aws-sdk/client-s3": "^3.1148.0", "@aws-sdk/s3-request-presigner": "^3.1148.0", "@smithy/fetch-http-handler": "^5.8.0", "archiver": "^8.0.0", "bullmq": "^6.3.12", "express": "^5.2.1", "ioredis": "^6.0.0", "mssql": "^12.7.9", "zod": "^4.6.5" }, "optionalPeers": ["@aws-sdk/client-s3", "@aws-sdk/s3-request-presigner", "@smithy/fetch-http-handler", "archiver", "bullmq", "ioredis", "mssql"], "bin": { "core-reader-check-peers": "dist/tooling/check-peers-cli.js" } }, "sha512-o+Bje2q9QjqG19stBqMkZsuppB5e8vt3P8gkWjeRitkgzZeqrVdZOhGYO9iXJ/BI0BQ8y89tmBtlT34ibiGzhg=="],
 
     "@smithy/core": ["@smithy/core@3.41.0", "", { "dependencies": { "@smithy/types": "^4.20.0", "tslib": "^2.6.2" } }, "sha512-fuZ34H1uizS3WgcX9VXG7Uy8od5A5/kCc+CR3NkHLNm2H/BE9AUHG02VIdu8ZB7FYhLqsr/RZbqAoXuOCg/Oxg=="],
 
